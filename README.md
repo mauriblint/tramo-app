@@ -31,11 +31,15 @@ API_HOST=127.0.0.1
 DATABASE_URL=./data/tramo.db
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-6-luna
+APP_URL=https://trytramo.com
+COOKIE_SECURE=true
+RESEND_API_KEY=re_...
+RESEND_FROM=tramo <hola@trytramo.com>
+ADMIN_EMAIL=tu@email.com
 ENV
 www-deploy tramo                                   # primer build + pm2 start
 cp ops/nginx-tramo.conf /etc/nginx/sites-available/tramo   # editar SERVER_NAME
 ln -s /etc/nginx/sites-available/tramo /etc/nginx/sites-enabled/tramo
-printf "USUARIO:$(openssl passwd -apr1)\n" > /etc/nginx/tramo.htpasswd
 nginx -t && systemctl reload nginx
 ```
 
