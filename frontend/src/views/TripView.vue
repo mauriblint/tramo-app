@@ -256,7 +256,7 @@ async function saveTrip() {
 async function deleteTrip() {
   if (!confirm('¿Borrar el viaje completo?')) return
   await run(() => api.deleteTrip(props.id))
-  router.push('/')
+  router.push('/plan')
 }
 
 const editorTitle = computed(() =>
@@ -315,7 +315,7 @@ const editorTitle = computed(() =>
         <div class="relative h-[340px] md:mt-4 md:overflow-hidden md:rounded-[28px]">
           <TripCover :stops="stops" :destination="trip.destination" />
           <div class="absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3">
-            <RouterLink to="/" aria-label="Volver" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
+            <RouterLink to="/plan" aria-label="Volver" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
             </RouterLink>
             <div class="flex gap-2">

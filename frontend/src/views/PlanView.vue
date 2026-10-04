@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { api, type Trip } from '@/api'
+import { auth, fetchMe, logout, openAuth, savePending, takePending } from '@/auth'
 import TramoLogo from '@/components/TramoLogo.vue'
 import { fmtDay } from '@/pinMeta'
 
@@ -19,19 +20,42 @@ const STEPS = [
   { title: 'Te armo cada día', sub: 'Y lo seguimos afinando en el chat' },
 ]
 
-onMounted(async () => {
+async function loadTrips() {
+  if (!auth.user) return
   try {
     // Drafts abandoned before saying where they're going are just noise.
     trips.value = (await api.listTrips()).filter((t) => t.destination)
   } catch (e) {
     error.value = (e as Error).message
   }
+}
+
+onMounted(async () => {
+  if (!auth.checked) await fetchMe()
+  // Back from the email link: pick up the message typed before signing up.
+  const pending = auth.user ? takePending() : null
+  if (pending) return begin(pending)
+  loadTrips()
 })
 
-/** The first message starts the trip: create it and hand the text to the trip chat. */
-async function start(msg = text.value) {
+/** The first message starts the trip; without an account, sign up first and keep the message. */
+function start(msg = text.value) {
   const q = msg.trim()
   if (!q || starting.value) return
+  if (!auth.user) {
+    savePending(q)
+    openAuth('signup', () => begin(takePending() ?? q))
+    return
+  }
+  begin(q)
+}
+
+async function signOut() {
+  await logout()
+  trips.value = []
+}
+
+async function begin(q: string) {
   starting.value = true
   try {
     const t = await api.createTrip({})
@@ -58,7 +82,11 @@ function onKey(e: KeyboardEvent) {
     >
       <div class="flex h-11 items-center justify-between">
         <TramoLogo :size="30" on-dark />
-        <a v-if="trips.length" href="#mis-viajes" class="text-sm font-semibold text-white/90 hover:text-white">Mis viajes</a>
+        <div class="flex items-center gap-4 text-sm font-semibold">
+          <a v-if="trips.length" href="#mis-viajes" class="text-white/90 hover:text-white">Mis viajes</a>
+          <button v-if="auth.user" class="text-white/70 hover:text-white" :title="auth.user.email" @click="signOut">Salir</button>
+          <button v-else-if="auth.checked" class="text-white/90 hover:text-white" @click="openAuth('login', loadTrips)">Entrar</button>
+        </div>
       </div>
 
       <div class="flex flex-col gap-6">

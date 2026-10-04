@@ -41,6 +41,7 @@ export interface Trip {
   departureTime: TimeOfDay | null
   /** Where they are now, when the trip already started. */
   currentCity: string | null
+  userId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -216,6 +217,7 @@ const toTrip = (r: Row): Trip => ({
   departureCity: r.departure_city,
   departureTime: r.departure_time,
   currentCity: r.current_city,
+  userId: r.user_id ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 })
@@ -251,8 +253,11 @@ const toMessage = (r: Row): Message => ({
 
 // ---- trips
 
-export function listTrips(): Trip[] {
-  return db.prepare('SELECT * FROM trips ORDER BY updated_at DESC').all().map((r) => toTrip(r as Row))
+export function listTrips(userId: string): Trip[] {
+  return db
+    .prepare('SELECT * FROM trips WHERE user_id = ? ORDER BY updated_at DESC')
+    .all(userId)
+    .map((r) => toTrip(r as Row))
 }
 
 export function getTrip(id: string): Trip | null {
@@ -260,13 +265,13 @@ export function getTrip(id: string): Trip | null {
   return r ? toTrip(r as Row) : null
 }
 
-export function createTrip(input: Partial<Trip> & { name: string }): Trip {
+export function createTrip(userId: string, input: Partial<Trip> & { name: string }): Trip {
   const id = randomUUID()
   const t = now()
   db.prepare(
-    `INSERT INTO trips (id, name, destination, start_date, end_date, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, input.name, input.destination ?? null, input.startDate ?? null, input.endDate ?? null, input.notes ?? null, t, t)
+    `INSERT INTO trips (id, user_id, name, destination, start_date, end_date, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, userId, input.name, input.destination ?? null, input.startDate ?? null, input.endDate ?? null, input.notes ?? null, t, t)
   return getTrip(id)!
 }
 

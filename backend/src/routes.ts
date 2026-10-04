@@ -3,10 +3,12 @@ import { Router, type Request } from 'express'
 import { GREETING, HttpError, chat, cleanDraft, extractPins, modeFor, nextQuestion } from './ai/chat.js'
 import * as repo from './db.js'
 import { generationStatus, startGeneration } from './ai/generate.js'
+import { requireUser } from './auth.js'
 import { geocode, locatePin } from './geo.js'
 import { getWeather } from './weather.js'
 
 export const router = Router()
+router.use(requireUser)
 
 /** The scripted onboarding question the UI should show buttons for (null once the route phase starts). */
 function currentQuestion(tripId: string) {
@@ -14,9 +16,10 @@ function currentQuestion(tripId: string) {
   return trip && modeFor(tripId) === 'parse' ? nextQuestion(trip) : null
 }
 
+/** A trip that exists AND belongs to the signed-in user (anything else is a 404). */
 function tripOr404(req: Request): repo.Trip {
   const trip = repo.getTrip(String(req.params.tripId))
-  if (!trip) throw new HttpError(404, 'Trip no encontrado')
+  if (!trip || trip.userId !== req.user?.id) throw new HttpError(404, 'Trip no encontrado')
   return trip
 }
 
@@ -57,13 +60,13 @@ const tripFields = (b: any): Partial<repo.Trip> => {
 
 // ---- trips
 
-router.get('/trips', (_req, res) => {
-  res.json(repo.listTrips())
+router.get('/trips', (req, res) => {
+  res.json(repo.listTrips(req.user!.id))
 })
 
 router.post('/trips', (req, res) => {
   const name = String(req.body?.name ?? '').trim() || 'Nuevo viaje'
-  const trip = repo.createTrip({ ...tripFields(req.body), name })
+  const trip = repo.createTrip(req.user!.id, { ...tripFields(req.body), name })
   repo.createMessage(trip.id, 'assistant', GREETING)
   res.status(201).json(trip)
 })

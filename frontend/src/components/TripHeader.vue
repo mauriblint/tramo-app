@@ -8,7 +8,7 @@ defineEmits<{ edit: [] }>()
 <template>
   <header class="rounded-b-[28px] bg-brand px-3 pt-2 pb-4 text-white md:rounded-none md:px-5 md:pb-3">
     <div class="flex items-center gap-1">
-      <RouterLink to="/" aria-label="Volver" class="grid h-11 w-11 place-items-center rounded-xl hover:bg-white/10">
+      <RouterLink to="/plan" aria-label="Volver" class="grid h-11 w-11 place-items-center rounded-xl hover:bg-white/10">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
       </RouterLink>
       <button class="min-w-0 flex-1 text-left" @click="$emit('edit')">

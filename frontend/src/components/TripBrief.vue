@@ -12,7 +12,7 @@ defineEmits<{ generate: [] }>()
   <aside class="flex h-full flex-col gap-5 overflow-y-auto rounded-[28px] bg-brand p-6 text-white">
     <div class="flex items-center justify-between">
       <TramoLogo :size="28" on-dark />
-      <RouterLink to="/" class="text-[13px] font-semibold text-white/90 hover:text-white">Mis viajes</RouterLink>
+      <RouterLink to="/plan" class="text-[13px] font-semibold text-white/90 hover:text-white">Mis viajes</RouterLink>
     </div>
 
     <div>
