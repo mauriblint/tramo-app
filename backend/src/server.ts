@@ -51,7 +51,7 @@ app.use('/api', router)
 const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   const status = err instanceof HttpError || err instanceof AuthError ? err.status : (err?.status ?? 500)
   if (status >= 500) console.error(err)
-  res.status(status).json({ error: err?.message ?? 'Error' })
+  res.status(status).json({ error: err?.message ?? 'Error', code: err instanceof AuthError ? err.code : undefined })
 }
 app.use(errorHandler)
 

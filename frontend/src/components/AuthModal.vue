@@ -9,7 +9,10 @@ const email = ref('')
 const code = ref('')
 const busy = ref(false)
 const error = ref('')
+/** Friendly guidance (not an error), e.g. "first time here: tell us your name". */
+const hint = ref('')
 const codeInput = ref<HTMLInputElement>()
+const nameInput = ref<HTMLInputElement>()
 
 const m = computed(() => auth.modal)
 const sent = computed(() => m.value.step === 'sent')
@@ -37,6 +40,7 @@ watch(sent, async (s) => {
 
 async function submitForm() {
   error.value = ''
+  hint.value = ''
   if (!email.value.trim() || (!login.value && !name.value.trim())) {
     error.value = login.value ? 'Escribí tu email' : 'Completá tu nombre y email'
     return
@@ -45,6 +49,14 @@ async function submitForm() {
   try {
     await startLogin(email.value.trim(), login.value ? undefined : name.value.trim())
   } catch (e) {
+    // "Entrar" with an email that has no account yet: it's a sign-up, keep the email and ask the name.
+    if ((e as { code?: string }).code === 'needs_name') {
+      m.value.mode = 'signup'
+      hint.value = (e as Error).message
+      await nextTick()
+      nameInput.value?.focus()
+      return
+    }
     error.value = (e as Error).message
   } finally {
     busy.value = false
@@ -158,12 +170,13 @@ function resend() {
           </div>
           <label v-if="!login" class="flex flex-col gap-1.5">
             <span class="text-[13px] font-bold text-slate-600">Nombre</span>
-            <input v-model="name" autocomplete="given-name" placeholder="Cómo te llamás" class="auth-input" />
+            <input ref="nameInput" v-model="name" autocomplete="given-name" placeholder="Cómo te llamás" class="auth-input" />
           </label>
           <label class="flex flex-col gap-1.5">
             <span class="text-[13px] font-bold text-slate-600">Email</span>
             <input v-model="email" type="email" inputmode="email" autocomplete="email" placeholder="tu@email.com" class="auth-input" />
           </label>
+          <p v-if="hint" class="rounded-xl bg-brand-soft px-3 py-2 text-sm font-semibold text-brand-dark">{{ hint }}</p>
           <p v-if="error" class="text-sm font-semibold text-rose-600">{{ error }}</p>
           <button class="btn-primary h-[54px] text-base" :disabled="busy">
             {{ busy ? 'Enviando…' : 'Enviarme el link' }}

@@ -61,6 +61,8 @@ export class AuthError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Machine-readable reason for the UI (e.g. 'needs_name' → switch the modal to sign-up). */
+    public code?: string,
   ) {
     super(message)
   }
@@ -76,7 +78,7 @@ export async function startLogin(rawEmail: string, rawName: string | undefined):
   if (!isEmail(email)) throw new AuthError(400, 'Revisá el email')
   const existing = findUserByEmail(email)
   const name = rawName?.trim() || existing?.name
-  if (!name) throw new AuthError(400, 'Decinos tu nombre')
+  if (!name) throw new AuthError(400, 'Es tu primera vez: decinos tu nombre y listo.', 'needs_name')
 
   const recent = db
     .prepare('SELECT COUNT(*) AS n FROM login_codes WHERE email = ? AND created_at > ?')

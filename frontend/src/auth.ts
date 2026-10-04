@@ -28,7 +28,7 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
   })
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`)
+  if (!res.ok) throw Object.assign(new Error(data.error ?? `Error ${res.status}`), { code: data.code as string | undefined })
   return data as T
 }
 
