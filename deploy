@@ -19,7 +19,7 @@ npm run build --prefix backend
 
 echo "==> restart backend (pm2)"
 # First deploy registers the process; later ones just restart it.
-pm2 restart tramo-api 2>/dev/null || pm2 start backend/dist/server.js --name tramo-api --cwd "$(pwd)/backend"
+pm2 restart tramo-api 2>/dev/null || pm2 start "$(pwd)/backend/dist/server.js" --name tramo-api --cwd "$(pwd)/backend"
 pm2 save
 
 echo "==> frontend build"
