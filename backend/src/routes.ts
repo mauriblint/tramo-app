@@ -1,0 +1,198 @@
+import { Router, type Request } from 'express'
+
+import { GREETING, HttpError, chat, cleanDraft, extractPins, modeFor, nextQuestion } from './ai/chat.js'
+import * as repo from './db.js'
+import { generationStatus, startGeneration } from './ai/generate.js'
+import { geocode, locatePin } from './geo.js'
+import { getWeather } from './weather.js'
+
+export const router = Router()
+
+/** The scripted onboarding question the UI should show buttons for (null once the route phase starts). */
+function currentQuestion(tripId: string) {
+  const trip = repo.getTrip(tripId)
+  return trip && modeFor(tripId) === 'parse' ? nextQuestion(trip) : null
+}
+
+function tripOr404(req: Request): repo.Trip {
+  const trip = repo.getTrip(String(req.params.tripId))
+  if (!trip) throw new HttpError(404, 'Trip no encontrado')
+  return trip
+}
+
+function pinOr404(req: Request): repo.Pin {
+  const pin = repo.getPin(String(req.params.pinId))
+  if (!pin || pin.tripId !== req.params.tripId) throw new HttpError(404, 'Pin no encontrado')
+  return pin
+}
+
+function messageOr404(req: Request): repo.Message {
+  const msg = repo.getMessage(String(req.params.messageId))
+  if (!msg || msg.tripId !== req.params.tripId) throw new HttpError(404, 'Mensaje no encontrado')
+  return msg
+}
+
+const tripFields = (b: any): Partial<repo.Trip> => {
+  const out: Partial<repo.Trip> = {}
+  for (const k of [
+    'name',
+    'destination',
+    'startDate',
+    'endDate',
+    'notes',
+    'travelers',
+    'kids',
+    'pace',
+    'interests',
+    'arrivalCity',
+    'arrivalTime',
+    'departureCity',
+    'departureTime',
+    'currentCity',
+  ] as const) {
+    if (k in b) out[k] = b[k] === '' ? null : b[k]
+  }
+  return out
+}
+
+// ---- trips
+
+router.get('/trips', (_req, res) => {
+  res.json(repo.listTrips())
+})
+
+router.post('/trips', (req, res) => {
+  const name = String(req.body?.name ?? '').trim() || 'Nuevo viaje'
+  const trip = repo.createTrip({ ...tripFields(req.body), name })
+  repo.createMessage(trip.id, 'assistant', GREETING)
+  res.status(201).json(trip)
+})
+
+router.get('/trips/:tripId', (req, res) => {
+  const trip = tripOr404(req)
+  res.json({
+    trip,
+    stops: repo.listStops(trip.id),
+    pins: repo.listPins(trip.id),
+    messages: repo.listMessages(trip.id),
+    generation: generationStatus(trip.id),
+    question: currentQuestion(trip.id),
+  })
+})
+
+router.patch('/trips/:tripId', (req, res) => {
+  const trip = tripOr404(req)
+  res.json(repo.updateTrip(trip.id, tripFields(req.body)))
+})
+
+router.delete('/trips/:tripId', (req, res) => {
+  repo.deleteTrip(tripOr404(req).id)
+  res.status(204).end()
+})
+
+// ---- pins
+
+router.post('/trips/:tripId/pins', (req, res) => {
+  const trip = tripOr404(req)
+  res.status(201).json(repo.createPin(trip.id, cleanDraft(req.body ?? {})))
+})
+
+router.patch('/trips/:tripId/pins/:pinId', (req, res) => {
+  const pin = pinOr404(req)
+  res.json(repo.updatePin(pin.id, cleanDraft({ ...pin, ...req.body })))
+})
+
+/** Drag & drop: set a day's (or the ideas list's) order. */
+router.put('/trips/:tripId/days/:day/order', (req, res) => {
+  const trip = tripOr404(req)
+  const day = req.params.day === 'ideas' ? null : String(req.params.day)
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []
+  repo.reorderDay(trip.id, day, ids)
+  res.json(repo.listPins(trip.id))
+})
+
+/** Lazily geocode a pin (called by the card when it becomes visible). */
+router.post('/trips/:tripId/pins/:pinId/locate', async (req, res) => {
+  const trip = tripOr404(req)
+  res.json(await locatePin(pinOr404(req), trip))
+})
+
+router.delete('/trips/:tripId/pins/:pinId', (req, res) => {
+  repo.deletePin(pinOr404(req).id)
+  res.status(204).end()
+})
+
+// ---- chat
+
+router.post('/trips/:tripId/chat', async (req, res) => {
+  const trip = tripOr404(req)
+  const text = String(req.body?.text ?? '').trim()
+  if (!text) throw new HttpError(400, 'Mensaje vacío')
+  const patch = req.body?.patch && typeof req.body.patch === 'object' ? tripFields(req.body.patch) : undefined
+  const result = await chat(trip.id, text, { patch, structured: req.body?.structured === true })
+  res.json({
+    ...result,
+    trip: repo.getTrip(trip.id),
+    stops: repo.listStops(trip.id),
+    pins: repo.listPins(trip.id),
+    generation: generationStatus(trip.id),
+    question: currentQuestion(trip.id),
+  })
+})
+
+/** "Crear itinerario" button: generate day by day in the background (all stops, or only `cities`). */
+router.post('/trips/:tripId/generate', (req, res) => {
+  const trip = tripOr404(req)
+  const cities = Array.isArray(req.body?.cities) ? req.body.cities.map(String) : null
+  res.status(202).json(startGeneration(trip.id, cities))
+})
+
+router.delete('/trips/:tripId/messages', (req, res) => {
+  repo.clearMessages(tripOr404(req).id)
+  res.status(204).end()
+})
+
+/** "📌 Pinear": distill a message into suggested pins attached to that message. */
+router.post('/trips/:tripId/messages/:messageId/extract', async (req, res) => {
+  const trip = tripOr404(req)
+  const msg = messageOr404(req)
+  const drafts = await extractPins(trip, msg.content)
+  const suggestions = [...msg.suggestions, ...drafts.map((draft) => ({ draft, pinId: null }))]
+  res.json(repo.setMessageSuggestions(msg.id, suggestions))
+})
+
+/** "Añadir al trip" on a suggestion. Optional body overrides the draft (edited before saving). */
+router.post('/trips/:tripId/messages/:messageId/suggestions/:index/accept', (req, res) => {
+  const trip = tripOr404(req)
+  const msg = messageOr404(req)
+  const i = Number(req.params.index)
+  const s = msg.suggestions[i]
+  if (!s) throw new HttpError(404, 'Sugerencia no encontrada')
+  if (s.pinId && repo.getPin(s.pinId)) throw new HttpError(409, 'Ya está en el trip')
+  const pin = repo.createPin(trip.id, cleanDraft({ ...s.draft, ...(req.body ?? {}) }))
+  msg.suggestions[i] = { ...s, pinId: pin.id }
+  res.json({ pin, message: repo.setMessageSuggestions(msg.id, msg.suggestions) })
+})
+
+router.delete('/trips/:tripId/messages/:messageId/suggestions/:index', (req, res) => {
+  const msg = messageOr404(req)
+  const i = Number(req.params.index)
+  msg.suggestions.splice(i, 1)
+  res.json(repo.setMessageSuggestions(msg.id, msg.suggestions))
+})
+
+// ---- weather
+
+router.get('/weather', async (req, res) => {
+  const lat = Number(req.query.lat)
+  const lng = Number(req.query.lng)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new HttpError(400, 'lat/lng inválidos')
+  const date = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null)
+  res.json(await getWeather(lat, lng, date(req.query.start), date(req.query.end)))
+})
+
+router.get('/geo', async (req, res) => {
+  const q = String(req.query.q ?? '').trim()
+  if (!q) throw new HttpError(400, 'q vacío')
+  res.json(await geocode(q))
+})

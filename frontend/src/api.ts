@@ -1,0 +1,162 @@
+export type PinType = 'place' | 'food' | 'activity' | 'route' | 'idea' | 'summary'
+export type PinStatus = 'idea' | 'want' | 'must' | 'done' | 'discarded'
+export type TimeOfDay = 'morning' | 'afternoon' | 'evening'
+
+export interface Trip {
+  id: string
+  name: string
+  destination: string | null
+  startDate: string | null
+  endDate: string | null
+  notes: string | null
+  travelers: 'solo' | 'pareja' | 'amigos' | 'familia' | null
+  kids: string | null
+  pace: 'tranqui' | 'intermedio' | 'intenso' | null
+  interests: string[]
+  arrivalCity: string | null
+  arrivalTime: TimeOfDay | null
+  departureCity: string | null
+  departureTime: TimeOfDay | null
+  currentCity: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PinDraft {
+  type: PinType
+  title: string
+  body: string
+  city: string | null
+  tags: string[]
+  url: string | null
+  status: PinStatus
+  day: string | null
+  timeOfDay: TimeOfDay | null
+}
+
+export interface Stop {
+  id: string
+  tripId: string
+  city: string
+  startDate: string | null
+  endDate: string | null
+  lodging: string | null
+  dayTrips: string[]
+  position: number
+}
+
+export interface QuestionOption {
+  label: string
+  patch?: Partial<Trip>
+}
+
+/** Scripted onboarding question (same for every trip); the UI renders its buttons. */
+export interface Question {
+  id: string
+  text: string
+  kind: 'free' | 'single' | 'multi'
+  options: QuestionOption[]
+}
+
+export interface GenerationStatus {
+  running: boolean
+  totalDays: number
+  doneDays: string[]
+  pendingCities: string[]
+  failedCities: string[]
+}
+
+export interface Pin extends PinDraft {
+  id: string
+  tripId: string
+  lat: number | null
+  lng: number | null
+  geoStatus: 'ok' | 'approx' | 'none' | null
+  position: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Suggestion {
+  draft: PinDraft
+  pinId: string | null
+}
+
+export interface Message {
+  id: string
+  tripId: string
+  role: 'user' | 'assistant'
+  content: string
+  suggestions: Suggestion[]
+  createdAt: string
+}
+
+export interface WeatherDay {
+  date: string
+  code: number
+  max: number
+  min: number
+  rain: number | null
+}
+
+export interface Weather {
+  mode: 'forecast' | 'last-year'
+  days: WeatherDay[]
+}
+
+async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${url}`, {
+    method,
+    headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (res.status === 204) return undefined as T
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`)
+  return data as T
+}
+
+export const api = {
+  listTrips: () => req<Trip[]>('GET', '/trips'),
+  createTrip: (t: Partial<Trip>) => req<Trip>('POST', '/trips', t),
+  getTrip: (id: string) =>
+    req<{
+      trip: Trip
+      stops: Stop[]
+      pins: Pin[]
+      messages: Message[]
+      generation: GenerationStatus | null
+      question: Question | null
+    }>('GET', `/trips/${id}`),
+  generate: (id: string, cities?: string[]) => req<GenerationStatus>('POST', `/trips/${id}/generate`, { cities: cities ?? null }),
+  updateTrip: (id: string, t: Partial<Trip>) => req<Trip>('PATCH', `/trips/${id}`, t),
+  deleteTrip: (id: string) => req<void>('DELETE', `/trips/${id}`),
+
+  createPin: (tripId: string, p: Partial<PinDraft>) => req<Pin>('POST', `/trips/${tripId}/pins`, p),
+  updatePin: (tripId: string, id: string, p: Partial<PinDraft>) => req<Pin>('PATCH', `/trips/${tripId}/pins/${id}`, p),
+  locatePin: (tripId: string, id: string) => req<Pin>('POST', `/trips/${tripId}/pins/${id}/locate`),
+  weather: (lat: number, lng: number, start: string | null, end: string | null) =>
+    req<Weather>('GET', `/weather?${new URLSearchParams({ lat: String(lat), lng: String(lng), start: start ?? '', end: end ?? '' })}`),
+  reorderDay: (tripId: string, day: string | null, ids: string[]) =>
+    req<Pin[]>('PUT', `/trips/${tripId}/days/${day ?? 'ideas'}/order`, { ids }),
+  geo: (q: string) => req<{ lat: number; lng: number } | null>('GET', `/geo?${new URLSearchParams({ q })}`),
+  deletePin: (tripId: string, id: string) => req<void>('DELETE', `/trips/${tripId}/pins/${id}`),
+
+  chat: (tripId: string, text: string, patch?: Partial<Trip>, structured = false) =>
+    req<{
+      userMessage: Message
+      assistantMessage: Message
+      trip: Trip
+      stops: Stop[]
+      pins: Pin[]
+      changedPinIds: string[]
+      generation: GenerationStatus | null
+      question: Question | null
+    }>('POST', `/trips/${tripId}/chat`, { text, patch, structured }),
+  clearChat: (tripId: string) => req<void>('DELETE', `/trips/${tripId}/messages`),
+  extract: (tripId: string, messageId: string) => req<Message>('POST', `/trips/${tripId}/messages/${messageId}/extract`),
+  acceptSuggestion: (tripId: string, messageId: string, index: number, override?: Partial<PinDraft>) =>
+    req<{ pin: Pin; message: Message }>('POST', `/trips/${tripId}/messages/${messageId}/suggestions/${index}/accept`, override ?? {}),
+  dismissSuggestion: (tripId: string, messageId: string, index: number) =>
+    req<Message>('DELETE', `/trips/${tripId}/messages/${messageId}/suggestions/${index}`),
+}

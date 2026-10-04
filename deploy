@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Production deploy, run on the server by `sudo www-deploy tramo` (see .github/workflows/deploy.yml).
+set -e
+
+cd "$(dirname "$0")"
+git config --global --add safe.directory "$(pwd)"
+
+BRANCH=main
+
+echo "==> sync con origin/$BRANCH (descartando cambios locales)"
+git fetch origin
+git checkout "$BRANCH"
+git reset --hard "origin/$BRANCH"
+git clean -fd
+
+echo "==> backend build"
+npm ci --prefix backend
+npm run build --prefix backend
+
+echo "==> restart backend (pm2)"
+# First deploy registers the process; later ones just restart it.
+pm2 restart tramo-api 2>/dev/null || pm2 start backend/dist/server.js --name tramo-api --cwd "$(pwd)/backend"
+pm2 save
+
+echo "==> frontend build"
+npm ci --prefix frontend
+npm run build --prefix frontend
+
+echo "==> done"
