@@ -5,6 +5,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import App from './App.vue'
 import { auth, fetchMe, openAuth } from './auth'
+import { listenForInstallPrompt } from './install'
 import LandingView from './views/LandingView.vue'
 import PlanView from './views/PlanView.vue'
 import TripView from './views/TripView.vue'
@@ -31,4 +32,5 @@ router.beforeEach(async (to) => {
   document.title = (to.meta.title as string | undefined) ?? 'tramo'
 })
 
+listenForInstallPrompt()
 createApp(App).use(router).mount('#app')

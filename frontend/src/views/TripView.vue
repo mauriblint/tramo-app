@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { api, type GenerationStatus, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
@@ -8,7 +8,9 @@ import PinBoard from '@/components/PinBoard.vue'
 import PinEditor from '@/components/PinEditor.vue'
 import RouteCard from '@/components/RouteCard.vue'
 import TripBrief from '@/components/TripBrief.vue'
+import InstallCard from '@/components/InstallCard.vue'
 import ItineraryList from '@/components/ItineraryList.vue'
+import { canOfferInstall, dismissInstall, install } from '@/install'
 import TripCover from '@/components/TripCover.vue'
 import TripHeader from '@/components/TripHeader.vue'
 import { PACE_LABEL, TRAVELERS_LABEL } from '@/tripProfile'
@@ -56,6 +58,23 @@ const tripForm = ref<Partial<Trip>>({})
 
 /** Before the day-by-day exists the screen is a conversation (+ route); afterwards it's the plan. */
 const planned = computed(() => !!generation.value?.running || pins.value.some((p) => p.day))
+
+// Offer "Add to Home Screen" once the itinerary is ready: that's when having it on the phone pays off.
+const showInstall = ref(false)
+const forcedInstall = typeof route.query.install === 'string' ? route.query.install : null
+watch(
+  () => planned.value && !generation.value?.running,
+  (ready) => {
+    if (!ready) return
+    if (forcedInstall === 'ios' || forcedInstall === 'android') install.platform = forcedInstall
+    if (forcedInstall || canOfferInstall()) setTimeout(() => (showInstall.value = true), 1500)
+  },
+)
+function closeInstall() {
+  showInstall.value = false
+  dismissInstall()
+}
+
 const days = computed(() => daysBetween(trip.value?.startDate ?? null, trip.value?.endDate ?? null))
 const ideas = computed(() => pins.value.filter((p) => !p.day))
 const cities = computed(() =>
@@ -417,6 +436,8 @@ const editorTitle = computed(() =>
         </div>
       </div>
     </div>
+
+    <InstallCard v-if="showInstall" @close="closeInstall" />
 
     <PinEditor
       v-if="editor"
