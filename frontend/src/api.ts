@@ -45,6 +45,37 @@ export interface Stop {
   position: number
 }
 
+export type BookingKind = 'flight' | 'train' | 'bus' | 'hotel'
+
+/** Something the traveler booked. Transport uses origin…seat, hotels hotelName…checkOutTime; the rest stays null. */
+export interface BookingInput {
+  kind: BookingKind
+  origin: string | null
+  destination: string | null
+  departDate: string | null
+  departTime: string | null
+  arriveDate: string | null
+  arriveTime: string | null
+  carrier: string | null
+  number: string | null
+  seat: string | null
+  hotelName: string | null
+  address: string | null
+  checkInDate: string | null
+  checkInTime: string | null
+  checkOutDate: string | null
+  checkOutTime: string | null
+  reference: string | null
+  notes: string | null
+}
+
+export interface Booking extends BookingInput {
+  id: string
+  tripId: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface QuestionOption {
   label: string
   patch?: Partial<Trip>
@@ -129,6 +160,7 @@ export const api = {
       trip: Trip
       stops: Stop[]
       pins: Pin[]
+      bookings: Booking[]
       messages: Message[]
       generation: GenerationStatus | null
       question: Question | null
@@ -136,6 +168,10 @@ export const api = {
   generate: (id: string, cities?: string[]) => req<GenerationStatus>('POST', `/trips/${id}/generate`, { cities: cities ?? null }),
   updateTrip: (id: string, t: Partial<Trip>) => req<Trip>('PATCH', `/trips/${id}`, t),
   deleteTrip: (id: string) => req<void>('DELETE', `/trips/${id}`),
+
+  createBooking: (tripId: string, b: BookingInput) => req<Booking>('POST', `/trips/${tripId}/bookings`, b),
+  updateBooking: (tripId: string, id: string, b: BookingInput) => req<Booking>('PATCH', `/trips/${tripId}/bookings/${id}`, b),
+  deleteBooking: (tripId: string, id: string) => req<void>('DELETE', `/trips/${tripId}/bookings/${id}`),
 
   createPin: (tripId: string, p: Partial<PinDraft>) => req<Pin>('POST', `/trips/${tripId}/pins`, p),
   updatePin: (tripId: string, id: string, p: Partial<PinDraft>) => req<Pin>('PATCH', `/trips/${tripId}/pins/${id}`, p),

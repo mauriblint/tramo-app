@@ -2,8 +2,11 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { api, type GenerationStatus, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
+import { api, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
+import BookingForm from '@/components/BookingForm.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
+import HotelList from '@/components/HotelList.vue'
+import TransportList from '@/components/TransportList.vue'
 import PinBoard from '@/components/PinBoard.vue'
 import PinEditor from '@/components/PinEditor.vue'
 import RouteCard from '@/components/RouteCard.vue'
@@ -20,6 +23,7 @@ import TripHeader from '@/components/TripHeader.vue'
 import { PACE_LABEL, TRAVELERS_LABEL } from '@/tripProfile'
 import { daysBetween, emptyDraft, fmtDay } from '@/pinMeta'
 import { useTripWeather } from '@/weather'
+import { TRANSPORT_KINDS, emptyBooking } from '@/bookings'
 import { profileSteps, routeReplies } from '@/tripProfile'
 
 const props = defineProps<{ id: string; section?: string; item?: string }>()
@@ -29,6 +33,7 @@ const route = useRoute()
 const trip = ref<Trip | null>(null)
 const stops = ref<Stop[]>([])
 const pins = ref<Pin[]>([])
+const bookings = ref<Booking[]>([])
 const messages = ref<Message[]>([])
 const generation = ref<GenerationStatus | null>(null)
 const question = ref<Question | null>(null)
@@ -157,6 +162,7 @@ async function load() {
     trip.value = data.trip
     stops.value = data.stops
     pins.value = data.pins
+    bookings.value = data.bookings
     messages.value = data.messages
     generation.value = data.generation
     question.value = data.question
@@ -264,6 +270,48 @@ async function clearChat() {
   if (!confirm('¿Empezar una conversación nueva? El viaje no se borra.')) return
   await run(() => api.clearChat(props.id))
   messages.value = []
+}
+
+// ---- bookings (flights, trains, buses, hotels): loaded by hand, shown in the itinerary
+const bookingForm = ref<{ initial: BookingInput; editing: Booking | null; kinds: BookingKind[] } | null>(null)
+const bookingBusy = ref(false)
+const bookingError = ref('')
+const bookingPlaces = computed(() => [...new Set([...stops.value.map((s) => s.city), ...bookings.value.flatMap((b) => [b.origin, b.destination])].filter((x): x is string => !!x))])
+
+function openBooking(prefill: Partial<BookingInput> = {}) {
+  const kind = prefill.kind ?? (tab.value === 'hoteles' ? 'hotel' : 'flight')
+  bookingError.value = ''
+  bookingForm.value = { initial: emptyBooking(kind, prefill), editing: null, kinds: kind === 'hotel' ? ['hotel'] : TRANSPORT_KINDS }
+}
+function editBooking(b: Booking) {
+  bookingError.value = ''
+  bookingForm.value = { initial: { ...b }, editing: b, kinds: b.kind === 'hotel' ? ['hotel'] : TRANSPORT_KINDS }
+}
+async function saveBooking(input: BookingInput) {
+  const f = bookingForm.value
+  if (!f) return
+  bookingBusy.value = true
+  bookingError.value = ''
+  try {
+    if (f.editing) {
+      const res = await api.updateBooking(props.id, f.editing.id, input)
+      bookings.value = bookings.value.map((b) => (b.id === res.id ? res : b))
+    } else {
+      bookings.value = [...bookings.value, await api.createBooking(props.id, input)]
+    }
+    bookingForm.value = null
+  } catch (e) {
+    bookingError.value = (e as Error).message
+  } finally {
+    bookingBusy.value = false
+  }
+}
+async function deleteBooking() {
+  const b = bookingForm.value?.editing
+  if (!b || !confirm('¿Borrar esta reserva?')) return
+  await run(() => api.deleteBooking(props.id, b.id))
+  bookings.value = bookings.value.filter((x) => x.id !== b.id)
+  bookingForm.value = null
 }
 
 async function movePin(p: Pin, day: string | null) {
@@ -393,12 +441,7 @@ const editorTitle = computed(() =>
               <h1 class="font-display text-[30px] leading-tight font-bold">{{ SECTION[tab].title }}</h1>
               <p class="mt-0.5 text-[14px] text-slate-500">{{ SECTION[tab].subtitle }}</p>
             </div>
-            <button
-              class="btn-primary h-11 flex-none px-5"
-              :disabled="tab === 'transporte' || tab === 'hoteles'"
-              :title="tab === 'transporte' || tab === 'hoteles' ? 'Muy pronto' : undefined"
-              @click="openNew(null)"
-            >
+            <button class="btn-primary h-11 flex-none px-5" @click="tab === 'transporte' || tab === 'hoteles' ? openBooking() : openNew(null)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {{ SECTION[tab].action }}
             </button>
@@ -458,20 +501,17 @@ const editorTitle = computed(() =>
               />
             </div>
 
-            <div v-else class="flex flex-col items-center gap-3 rounded-[22px] bg-white px-6 py-10 text-center md:bg-rocio">
-              <span class="grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft">
-                <svg v-if="tab === 'transporte'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" /></svg>
-                <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3" /><circle cx="7" cy="11" r="1.6" /></svg>
-              </span>
-              <h2 class="font-display text-xl font-bold">{{ tab === 'transporte' ? 'Tus vuelos y trenes' : 'Tus hoteles' }}</h2>
-              <p class="max-w-[380px] text-[15px] leading-relaxed text-slate-500">
-                {{
-                  tab === 'transporte'
-                    ? 'Muy pronto vas a poder cargarlos (o pegar el mail de confirmación) y aparecen solos en el día que corresponde.'
-                    : 'Muy pronto vas a poder cargarlos: el check-in y el check-out se ubican solos en el itinerario y te avisamos si falta alguna noche.'
-                }}
-              </p>
-            </div>
+            <template v-else>
+              <button
+                class="flex h-12 items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white md:hidden"
+                @click="openBooking()"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                {{ SECTION[tab].action }}
+              </button>
+              <TransportList v-if="tab === 'transporte'" :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
+              <HotelList v-else :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
+            </template>
           </section>
         </template>
 
@@ -545,6 +585,20 @@ const editorTitle = computed(() =>
     </div>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />
+
+    <BookingForm
+      v-if="bookingForm"
+      :key="bookingForm.editing?.id ?? 'new'"
+      :initial="bookingForm.initial"
+      :editing="bookingForm.editing"
+      :kinds="bookingForm.kinds"
+      :places="bookingPlaces"
+      :busy="bookingBusy"
+      :error="bookingError"
+      @save="saveBooking"
+      @delete="deleteBooking"
+      @close="bookingForm = null"
+    />
 
     <PinEditor
       v-if="editor"
