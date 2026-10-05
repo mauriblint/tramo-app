@@ -171,6 +171,8 @@ export const api = {
 
   createBooking: (tripId: string, b: BookingInput) => req<Booking>('POST', `/trips/${tripId}/bookings`, b),
   updateBooking: (tripId: string, id: string, b: BookingInput) => req<Booking>('PATCH', `/trips/${tripId}/bookings/${id}`, b),
+  parseBookings: (tripId: string, text: string) =>
+    req<{ bookings: BookingInput[]; skipped: number; problems: string[] }>('POST', `/trips/${tripId}/bookings/parse`, { text }),
   deleteBooking: (tripId: string, id: string) => req<void>('DELETE', `/trips/${tripId}/bookings/${id}`),
 
   createPin: (tripId: string, p: Partial<PinDraft>) => req<Pin>('POST', `/trips/${tripId}/pins`, p),

@@ -6,6 +6,7 @@ import { api, type Booking, type BookingInput, type BookingKind, type Generation
 import BookingForm from '@/components/BookingForm.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import HotelList from '@/components/HotelList.vue'
+import PasteBookings from '@/components/PasteBookings.vue'
 import TransportList from '@/components/TransportList.vue'
 import PinBoard from '@/components/PinBoard.vue'
 import PinEditor from '@/components/PinEditor.vue'
@@ -279,6 +280,7 @@ async function clearChat() {
 
 // ---- bookings (flights, trains, buses, hotels): loaded by hand, shown in the itinerary
 const bookingForm = ref<{ initial: BookingInput; editing: Booking | null; kinds: BookingKind[] } | null>(null)
+const pasting = ref(false)
 const bookingBusy = ref(false)
 const bookingError = ref('')
 const bookingPlaces = computed(() => [...new Set([...stops.value.map((s) => s.city), ...bookings.value.flatMap((b) => [b.origin, b.destination])].filter((x): x is string => !!x))])
@@ -516,6 +518,18 @@ const editorTitle = computed(() =>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                 {{ SECTION[tab].action }}
               </button>
+              <button
+                class="flex items-center gap-3 rounded-[20px] border-[1.5px] border-dashed border-[#7EC9A6] bg-brand-soft px-4 py-3.5 text-left hover:border-brand"
+                @click="pasting = true"
+              >
+                <span class="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 13h6M9 17h4" /></svg>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <span class="block text-[15px] font-extrabold text-brand-dark">Pegá tu confirmación</span>
+                  <span class="block text-[13px] leading-snug text-[#3F5A4D]">{{ tab === 'viajes' ? 'El mail de la aerolínea o del tren' : 'El mail de Booking, Airbnb o del hotel' }} y lo cargo yo.</span>
+                </span>
+              </button>
               <TransportList v-if="tab === 'viajes'" :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
               <HotelList v-else :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
             </template>
@@ -593,6 +607,13 @@ const editorTitle = computed(() =>
     </div>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />
+
+    <PasteBookings
+      v-if="pasting && trip"
+      :trip-id="trip.id"
+      @saved="(list) => ((bookings = [...bookings, ...list]), (pasting = false))"
+      @close="pasting = false"
+    />
 
     <BookingForm
       v-if="bookingForm"

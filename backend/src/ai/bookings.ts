@@ -78,7 +78,7 @@ Reglas:
 - No inventes nada: lo que no está en el mail va en null. Los campos que no corresponden al tipo, en null.
 - Si el texto no contiene reservas, devolvé una lista vacía.`
 
-export async function parseBookings(trip: Trip, rawText: string): Promise<{ bookings: BookingInput[]; skipped: number }> {
+export async function parseBookings(trip: Trip, rawText: string): Promise<{ bookings: BookingInput[]; skipped: number; problems: string[] }> {
   const text = rawText.trim().slice(0, MAX_CHARS)
   if (text.length < 20) throw new HttpError(400, 'Pegá el texto del mail de confirmación')
 
@@ -93,13 +93,15 @@ export async function parseBookings(trip: Trip, rawText: string): Promise<{ book
 
   // Same validation as manual entry: whatever doesn't pass (e.g. a flight without date) is left out.
   const bookings: BookingInput[] = []
+  const problems: string[] = []
   for (const b of raw) {
     try {
       bookings.push(cleanBooking(b))
-    } catch {
-      // skipped
+    } catch (e) {
+      problems.push((e as Error).message)
+      console.log('[llm:bookings] skipped:', (e as Error).message, JSON.stringify(b))
     }
   }
-  console.log(`[llm:bookings] ${text.length} chars → ${bookings.length} ok, ${raw.length - bookings.length} skipped`)
-  return { bookings, skipped: raw.length - bookings.length }
+  console.log(`[llm:bookings] ${text.length} chars → ${bookings.length} ok, ${problems.length} skipped`)
+  return { bookings, skipped: problems.length, problems: [...new Set(problems)] }
 }
