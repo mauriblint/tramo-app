@@ -14,7 +14,7 @@ const flight = computed(() => b.value.kind === 'flight')
 const more = ref(!!(props.initial.carrier || props.initial.notes || props.initial.arriveDate || props.initial.address))
 const localError = ref('')
 
-const title = computed(() => (props.editing ? `Editar ${KIND_META[b.value.kind].label.toLowerCase()}` : hotel.value ? 'Agregar hotel' : 'Agregar transporte'))
+const title = computed(() => (props.editing ? `Editar ${KIND_META[b.value.kind].label.toLowerCase()}` : hotel.value ? 'Agregar hotel' : 'Agregar viaje'))
 
 function save() {
   localError.value = ''

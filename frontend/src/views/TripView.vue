@@ -52,20 +52,25 @@ const level = computed<'trip' | 'day' | 'pin'>(() =>
 )
 const tab = computed<TripTab>(() => {
   const t = route.query.tab
-  return t === 'transporte' || t === 'hoteles' || t === 'ideas' ? t : 'itinerario'
+  return t === 'viajes' || t === 'hoteles' || t === 'ideas' ? t : 'itinerario'
 })
 /** The sidebar keeps the section you came from highlighted while you're inside a day or an activity. */
 const navTab = computed<TripTab>(() => (level.value === 'trip' ? tab.value : currentPin.value && !currentPin.value.day ? 'ideas' : 'itinerario'))
-const SECTION = computed(() => ({
-  itinerario: {
-    title: 'Itinerario',
-    subtitle: [days.value.length && `${days.value.length} días`, stops.value.map((s) => s.city).join(' → ')].filter(Boolean).join(' · '),
-    action: 'Agregar actividad',
-  },
-  transporte: { title: 'Transporte', subtitle: 'Vuelos, trenes y buses', action: 'Agregar transporte' },
-  hoteles: { title: 'Hoteles', subtitle: 'Dónde dormís cada noche', action: 'Agregar hotel' },
-  ideas: { title: 'Ideas', subtitle: 'Lugares guardados que todavía no tienen día', action: 'Agregar idea' },
-}))
+const SECTION: Record<TripTab, { title: string; action: string }> = {
+  itinerario: { title: 'Itinerario', action: 'Agregar actividad' },
+  viajes: { title: 'Viajes', action: 'Agregar viaje' },
+  hoteles: { title: 'Hoteles', action: 'Agregar hotel' },
+  ideas: { title: 'Ideas', action: 'Agregar idea' },
+}
+/** Itinerary header pills: short facts that stay readable however many stops the trip has. */
+const itineraryPills = computed(() => {
+  const t = trip.value
+  return [
+    days.value.length ? `${days.value.length} días` : null,
+    t?.startDate && t.endDate ? `${fmtDay(t.startDate, { day: 'numeric', month: 'short' })} → ${fmtDay(t.endDate, { day: 'numeric', month: 'short' })}` : null,
+    stops.value.length ? `${stops.value.length} ${stops.value.length === 1 ? 'ciudad' : 'ciudades'}` : null,
+  ].filter((x): x is string => !!x)
+})
 
 // Desktop scrolls inside the white panel: start each screen at the top.
 const panel = ref<HTMLElement>()
@@ -436,12 +441,14 @@ const editorTitle = computed(() =>
       <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:py-7">
         <template v-if="level === 'trip'">
           <!-- Desktop section header -->
-          <div class="mb-5 hidden items-end justify-between gap-4 md:flex">
+          <div class="mb-5 hidden items-center justify-between gap-4 md:flex">
             <div class="min-w-0">
               <h1 class="font-display text-[30px] leading-tight font-bold">{{ SECTION[tab].title }}</h1>
-              <p class="mt-0.5 text-[14px] text-slate-500">{{ SECTION[tab].subtitle }}</p>
+              <div v-if="tab === 'itinerario' && itineraryPills.length" class="mt-2 flex flex-wrap gap-1.5">
+                <span v-for="p in itineraryPills" :key="p" class="inline-flex h-7 items-center rounded-full bg-rocio px-3 text-[13px] font-bold text-slate-600">{{ p }}</span>
+              </div>
             </div>
-            <button class="btn-primary h-11 flex-none px-5" @click="tab === 'transporte' || tab === 'hoteles' ? openBooking() : openNew(null)">
+            <button class="btn-primary h-11 flex-none px-5" @click="tab === 'viajes' || tab === 'hoteles' ? openBooking() : openNew(null)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {{ SECTION[tab].action }}
             </button>
@@ -509,7 +516,7 @@ const editorTitle = computed(() =>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
                 {{ SECTION[tab].action }}
               </button>
-              <TransportList v-if="tab === 'transporte'" :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
+              <TransportList v-if="tab === 'viajes'" :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
               <HotelList v-else :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
             </template>
           </section>
