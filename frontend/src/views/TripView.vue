@@ -9,15 +9,19 @@ import PinEditor from '@/components/PinEditor.vue'
 import RouteCard from '@/components/RouteCard.vue'
 import TripBrief from '@/components/TripBrief.vue'
 import InstallCard from '@/components/InstallCard.vue'
+import DayView from '@/components/DayView.vue'
 import ItineraryList from '@/components/ItineraryList.vue'
+import PinDetail from '@/components/PinDetail.vue'
+import TripTabs, { type TripTab } from '@/components/TripTabs.vue'
 import { canOfferInstall, dismissInstall, install } from '@/install'
 import TripCover from '@/components/TripCover.vue'
 import TripHeader from '@/components/TripHeader.vue'
 import { PACE_LABEL, TRAVELERS_LABEL } from '@/tripProfile'
 import { daysBetween, emptyDraft, fmtDay } from '@/pinMeta'
+import { useTripWeather } from '@/weather'
 import { profileSteps, routeReplies } from '@/tripProfile'
 
-const props = defineProps<{ id: string }>()
+const props = defineProps<{ id: string; section?: string; item?: string }>()
 const router = useRouter()
 const route = useRoute()
 
@@ -33,10 +37,33 @@ const pendingText = ref('')
 const failed = ref(0)
 const extractingId = ref<string | null>(null)
 const highlightIds = ref<string[]>([])
-type Tab = 'chat' | 'plan' | 'ideas'
-const tab = ref<Tab>('plan')
-/** Planned view: the chat and the ideas open as sheets over the itinerary. */
-const sheet = ref<'chat' | 'ideas' | null>(null)
+/** Planned view: the copilot opens as a sheet over whatever you're looking at. */
+const sheet = ref<'chat' | null>(null)
+
+// Where you are: the trip (with its tabs), one day, or one activity — all in the URL.
+const level = computed<'trip' | 'day' | 'pin'>(() =>
+  props.section === 'days' && props.item ? 'day' : props.section === 'pins' && props.item ? 'pin' : 'trip',
+)
+const tab = computed<TripTab>(() => {
+  const t = route.query.tab
+  return t === 'transporte' || t === 'hoteles' || t === 'ideas' ? t : 'itinerario'
+})
+const currentPin = computed(() => (level.value === 'pin' ? (pins.value.find((p) => p.id === props.item) ?? null) : null))
+const weather = useTripWeather(trip, stops)
+
+// The copilot gets the current day or activity as context, so "cambiá esto" knows what "esto" is.
+const copilotContext = computed(() => {
+  if (level.value === 'day' && props.item) return `el día ${days.value.indexOf(props.item) + 1} (${fmtDay(props.item)})`
+  const p = currentPin.value
+  if (p) return p.day ? `“${p.title}” (día ${days.value.indexOf(p.day) + 1}, ${fmtDay(p.day)})` : `“${p.title}”`
+  return null
+})
+const copilotPlaceholder = computed(() =>
+  level.value === 'day' ? 'Cambiá algo de este día…' : level.value === 'pin' ? 'Preguntá algo de este lugar…' : 'Pedile cambios al copiloto…',
+)
+function sendFromCopilot(text: string, patch?: Partial<Trip>, structured?: boolean) {
+  send(copilotContext.value && !structured ? `Sobre ${copilotContext.value}: ${text}` : text, patch, structured)
+}
 const tripFacts = computed(() => {
   const t = trip.value
   if (!t) return []
@@ -110,7 +137,6 @@ async function load() {
     messages.value = data.messages
     generation.value = data.generation
     question.value = data.question
-    tab.value = planned.value ? 'plan' : 'chat'
     if (data.generation?.running) startPolling()
     // Coming from the home screen: the first message was typed there.
     const q = typeof route.query.q === 'string' ? route.query.q.trim() : ''
@@ -150,7 +176,6 @@ async function generate() {
   const res = await run(() => api.generate(props.id))
   if (!res) return
   generation.value = res
-  tab.value = 'plan'
   startPolling()
 }
 
@@ -169,7 +194,6 @@ async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 }
 
 async function send(text: string, patch?: Partial<Trip>, structured = false) {
-  const wasPlanned = planned.value
   sending.value = true
   pendingText.value = text
   const res = await run(() => api.chat(props.id, text, patch, structured))
@@ -186,8 +210,6 @@ async function send(text: string, patch?: Partial<Trip>, structured = false) {
   question.value = res.question
   flash(res.changedPinIds)
   if (res.generation?.running) startPolling()
-  // Generation just started from the chat: on mobile jump to the plan to watch it.
-  if (!wasPlanned && planned.value) tab.value = 'plan'
 }
 
 function replaceMessage(m: Message) {
@@ -219,6 +241,11 @@ async function clearChat() {
   if (!confirm('¿Empezar una conversación nueva? El viaje no se borra.')) return
   await run(() => api.clearChat(props.id))
   messages.value = []
+}
+
+async function movePin(p: Pin, day: string | null) {
+  const res = await run(() => api.updatePin(props.id, p.id, { day }))
+  if (res) Object.assign(p, res)
 }
 
 async function setStatus(p: Pin, status: PinStatus) {
@@ -258,6 +285,7 @@ async function deleteEditingPin() {
   await run(() => api.deletePin(props.id, id))
   pins.value = pins.value.filter((p) => p.id !== id)
   editor.value = null
+  if (level.value === 'pin') router.back()
 }
 
 function openTripEditor() {
@@ -284,7 +312,7 @@ const editorTitle = computed(() =>
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col">
+  <div :class="trip && planned ? '' : 'flex h-dvh flex-col'">
     <p v-if="error" class="flex items-start gap-2 bg-rose-50 px-3 py-2 text-sm text-rose-700">
       <span class="flex-1">{{ error }}</span>
       <button aria-label="Cerrar" @click="error = ''">×</button>
@@ -328,84 +356,130 @@ const editorTitle = computed(() =>
       </section>
     </div>
 
-    <!-- ============ Planned: map cover + day by day ============ -->
-    <div v-else-if="trip" class="min-h-0 flex-1 overflow-y-auto">
-      <div class="mx-auto w-full max-w-[600px] pb-32">
-        <div class="relative h-[340px] md:mt-4 md:overflow-hidden md:rounded-[28px]">
-          <TripCover :stops="stops" :destination="trip.destination" />
-          <div class="absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3">
-            <RouterLink to="/plan" aria-label="Volver" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
-            </RouterLink>
-            <div class="flex gap-2">
-              <button class="h-11 rounded-full bg-white/95 px-4 text-sm font-bold shadow-md hover:bg-white" @click="sheet = 'ideas'">
-                Ideas<span v-if="ideas.length" class="text-slate-500"> · {{ ideas.length }}</span>
-              </button>
+    <!-- ============ Planned: trip → day → activity, one narrow column ============ -->
+    <div v-else-if="trip" class="min-h-dvh bg-rocio pb-32 md:bg-white md:px-4 md:pt-6">
+      <div class="mx-auto w-full max-w-[720px]">
+        <template v-if="level === 'trip'">
+          <div class="relative h-[300px] md:overflow-hidden md:rounded-t-[28px]">
+            <TripCover :stops="stops" :destination="trip.destination" />
+            <div class="absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3 md:p-4">
+              <RouterLink to="/plan" aria-label="Mis viajes" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+              </RouterLink>
               <button aria-label="Editar viaje" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white" @click="openTripEditor">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
               </button>
             </div>
           </div>
-        </div>
 
-        <section class="relative z-[600] -mt-7 rounded-t-[28px] bg-rocio px-5 pt-6">
-          <h1 class="font-display text-[30px] leading-[1.05] font-bold">{{ trip.name }}</h1>
-          <p class="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[14px] text-slate-600">
-            <template v-for="(f, i) in tripFacts" :key="f">
-              <span v-if="i" class="text-slate-300">·</span>
-              <span>{{ f }}</span>
-            </template>
-          </p>
-
-          <div v-if="generation?.running" class="mt-5 rounded-2xl bg-brand-soft px-4 py-3">
-            <div class="flex justify-between text-sm font-semibold text-brand-dark">
-              <span>Armando tu itinerario…</span>
-              <span class="tabular-nums">{{ generation.doneDays.length }} / {{ generation.totalDays }}</span>
+          <section class="relative z-[600] -mt-7 flex flex-col gap-5 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:rounded-[28px] md:px-5">
+            <div class="px-1">
+              <h1 class="font-display text-[32px] leading-[1.04] font-bold md:text-[38px]">{{ trip.name }}</h1>
+              <p class="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[15px] text-slate-500">
+                <template v-for="(f, i) in tripFacts" :key="f">
+                  <span v-if="i" class="text-slate-300">·</span>
+                  <span>{{ f }}</span>
+                </template>
+              </p>
             </div>
-            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
-              <div
-                class="h-full rounded-full bg-brand transition-all duration-500"
-                :style="{ width: `${(100 * generation.doneDays.length) / Math.max(1, generation.totalDays)}%` }"
+
+            <TripTabs :trip-id="trip.id" :active="tab" :ideas="ideas.length" />
+
+            <template v-if="tab === 'itinerario'">
+              <div v-if="generation?.running" class="rounded-2xl bg-brand-soft px-4 py-3">
+                <div class="flex justify-between text-sm font-semibold text-brand-dark">
+                  <span>Armando tu itinerario…</span>
+                  <span class="tabular-nums">{{ generation.doneDays.length }} / {{ generation.totalDays }}</span>
+                </div>
+                <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                  <div
+                    class="h-full rounded-full bg-brand transition-all duration-500"
+                    :style="{ width: `${(100 * generation.doneDays.length) / Math.max(1, generation.totalDays)}%` }"
+                  />
+                </div>
+              </div>
+              <ItineraryList :trip="trip" :stops="stops" :pins="pins" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
+            </template>
+
+            <div v-else-if="tab === 'ideas'" class="-mx-4 md:-mx-5">
+              <PinBoard
+                :pins="ideas"
+                :highlight-ids="highlightIds"
+                :trip-start="trip.startDate"
+                :trip-end="trip.endDate"
+                @add="openNew(null)"
+                @edit="(p) => router.push(`/trips/${trip!.id}/pins/${p.id}`)"
+                @status="setStatus"
+                @located="(p, np) => Object.assign(p, np)"
               />
             </div>
-          </div>
 
-          <ItineraryList
-            class="mt-7"
-            :trip="trip"
-            :stops="stops"
-            :pins="pins"
-            :generation="generation"
-            :highlight-ids="highlightIds"
-            @edit="(p) => (editor = { ctx: { kind: 'pin', pin: p }, draft: { ...p } })"
-          />
-        </section>
+            <div v-else class="flex flex-col items-center gap-3 rounded-[22px] bg-white px-6 py-10 text-center">
+              <span class="grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft">
+                <svg v-if="tab === 'transporte'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" /></svg>
+                <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3" /><circle cx="7" cy="11" r="1.6" /></svg>
+              </span>
+              <h2 class="font-display text-xl font-bold">{{ tab === 'transporte' ? 'Tus vuelos y trenes' : 'Tus hoteles' }}</h2>
+              <p class="max-w-[380px] text-[15px] leading-relaxed text-slate-500">
+                {{
+                  tab === 'transporte'
+                    ? 'Muy pronto vas a poder cargarlos (o pegar el mail de confirmación) y aparecen solos en el día que corresponde.'
+                    : 'Muy pronto vas a poder cargarlos: el check-in y el check-out se ubican solos en el itinerario y te avisamos si falta alguna noche.'
+                }}
+              </p>
+            </div>
+          </section>
+        </template>
+
+        <DayView
+          v-else-if="level === 'day'"
+          :trip="trip"
+          :stops="stops"
+          :pins="pins"
+          :day="item!"
+          :weather="weather"
+          @located="(p, np) => Object.assign(p, np)"
+          @add="openNew"
+        />
+
+        <PinDetail
+          v-else-if="currentPin"
+          :trip="trip"
+          :stops="stops"
+          :pins="pins"
+          :pin="currentPin"
+          @edit="(p) => (editor = { ctx: { kind: 'pin', pin: p }, draft: { ...p } })"
+          @done="(p, done) => setStatus(p, done ? 'done' : 'want')"
+          @move="movePin"
+          @located="(p, np) => Object.assign(p, np)"
+        />
       </div>
 
-      <!-- Copilot bar -->
+      <!-- Copilot bar: it knows which day or activity you're looking at -->
       <div class="pointer-events-none fixed inset-x-0 bottom-0 z-[700] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <button
-          class="pointer-events-auto mx-auto flex h-14 w-full max-w-[568px] items-center gap-3 rounded-full bg-noche pr-2 pl-5 text-left text-white shadow-[0_12px_28px_rgba(14,31,24,0.3)]"
+          class="pointer-events-auto mx-auto flex h-14 w-full max-w-[720px] items-center gap-3 rounded-full bg-noche pr-2 pl-5 text-left text-white shadow-[0_12px_28px_rgba(14,31,24,0.3)]"
           @click="sheet = 'chat'"
         >
-          <span class="flex-1 truncate text-[15px] text-white/70">Pedile cambios al copiloto…</span>
+          <span class="flex-1 truncate text-[15px] text-white/70">{{ copilotPlaceholder }}</span>
           <span class="grid h-10 w-10 place-items-center rounded-full bg-white text-noche">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
           </span>
         </button>
       </div>
 
-      <!-- Sheets -->
       <div v-if="sheet" class="fixed inset-0 z-[900] flex items-end justify-center bg-noche/30" @click.self="sheet = null">
-        <div class="flex h-[88dvh] w-full max-w-[600px] flex-col overflow-hidden rounded-t-[28px] bg-rocio shadow-2xl">
+        <div class="flex h-[88dvh] w-full max-w-[720px] flex-col overflow-hidden rounded-t-[28px] bg-rocio shadow-2xl">
           <div class="flex items-center justify-between px-5 pt-4 pb-2">
-            <h2 class="font-display text-lg font-bold">{{ sheet === 'chat' ? 'Copiloto' : 'Ideas sin día' }}</h2>
+            <div class="min-w-0">
+              <h2 class="font-display text-lg font-bold">Copiloto</h2>
+              <p v-if="copilotContext" class="truncate text-[13px] text-slate-500">Sobre {{ copilotContext }}</p>
+            </div>
             <button aria-label="Cerrar" class="grid h-10 w-10 place-items-center rounded-full hover:bg-white" @click="sheet = null">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
             </button>
           </div>
           <ChatPanel
-            v-if="sheet === 'chat'"
             class="min-h-0 flex-1"
             :messages="messages"
             :sending="sending"
@@ -413,26 +487,14 @@ const editorTitle = computed(() =>
             :extracting-id="extractingId"
             :failed="failed"
             :quick="quick"
-            placeholder="Pedile cambios al copiloto…"
-            @send="send"
+            :placeholder="copilotPlaceholder"
+            @send="sendFromCopilot"
             @extract="extract"
             @accept="(m, i) => accept(m, i)"
             @edit-accept="(m, i) => (editor = { ctx: { kind: 'suggestion', message: m, index: i }, draft: { ...m.suggestions[i]!.draft } })"
             @dismiss="dismiss"
             @clear="clearChat"
           />
-          <div v-else class="min-h-0 flex-1 overflow-y-auto">
-            <PinBoard
-              :pins="ideas"
-              :highlight-ids="highlightIds"
-              :trip-start="trip.startDate"
-              :trip-end="trip.endDate"
-              @add="openNew(null)"
-              @edit="(p) => (editor = { ctx: { kind: 'pin', pin: p }, draft: { ...p } })"
-              @status="setStatus"
-              @located="(p, np) => Object.assign(p, np)"
-            />
-          </div>
         </div>
       </div>
     </div>
