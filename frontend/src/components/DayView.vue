@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { api, type Pin, type Stop, type TimeOfDay, type Trip, type WeatherDay } from '@/api'
+import { api, type Booking, type Pin, type Stop, type TimeOfDay, type Trip, type WeatherDay } from '@/api'
+import { dayEvents, hotelForNight, mapsSearch, slotOf, type DayEvent } from '@/bookings'
+import BookingBlock from '@/components/BookingBlock.vue'
 import DayMap, { type DayPoint } from '@/components/DayMap.vue'
 import { geocodeCity } from '@/geo'
 import { TIMES, TIME_META, dayHeadline, daysBetween, fmtDay, stopForDay } from '@/pinMeta'
 import { weatherIcon } from '@/weather'
 
 /** One day, focused: its map, then morning / afternoon / evening as short cards that open each activity. */
-const props = defineProps<{ trip: Trip; stops: Stop[]; pins: Pin[]; day: string; weather: Record<string, WeatherDay> }>()
+const props = defineProps<{ trip: Trip; stops: Stop[]; pins: Pin[]; bookings: Booking[]; day: string; weather: Record<string, WeatherDay> }>()
 const emit = defineEmits<{ located: [Pin, Pin]; add: [string] }>()
 
 const allDays = computed(() => daysBetween(props.trip.startDate, props.trip.endDate))
@@ -26,12 +28,26 @@ const isLeg = (p: Pin) => p.type === 'route'
 const numbered = computed(() => dayPins.value.filter((p) => !isLeg(p)))
 const numberOf = (p: Pin) => numbered.value.indexOf(p) + 1
 
+// Bookings sit in the slot of their time: leaving / checking out before that slot's activities, arriving / checking in after.
+const events = computed(() => dayEvents(props.bookings, props.day))
+const isFirst = (e: DayEvent) => e.type === 'depart' || e.type === 'checkout'
 const groups = computed(() => {
   const slots: (TimeOfDay | null)[] = [...TIMES, null]
   return slots
-    .map((t) => ({ key: t ?? 'none', label: t ? TIME_META[t].label : 'Sin horario', pins: dayPins.value.filter((p) => p.timeOfDay === t) }))
-    .filter((g) => g.pins.length)
+    .map((t) => {
+      const evs = t ? events.value.filter((e) => slotOf(e.time) === t) : []
+      return {
+        key: t ?? 'none',
+        label: t ? TIME_META[t].label : 'Sin horario',
+        // You check out before leaving, whatever times the bookings say.
+        before: evs.filter(isFirst).sort((a, b) => Number(b.type === 'checkout') - Number(a.type === 'checkout')),
+        pins: dayPins.value.filter((p) => p.timeOfDay === t),
+        after: evs.filter((e) => !isFirst(e)),
+      }
+    })
+    .filter((g) => g.pins.length || g.before.length || g.after.length)
 })
+const hotel = computed(() => hotelForNight(props.bookings, props.day))
 
 const dayTrip = computed(() => stop.value?.dayTrips.find((t) => dayPins.value.some((p) => p.city?.toLowerCase().includes(t.toLowerCase()))) ?? null)
 
@@ -146,6 +162,9 @@ function firstSentence(s: string) {
 
       <div v-for="g in groups" :key="g.key" class="mt-4 flex flex-col gap-2">
         <h2 class="px-1 text-xs font-extrabold tracking-[0.07em] text-slate-400 uppercase">{{ g.label }}</h2>
+        <template v-for="e in g.before" :key="e.booking.id + e.type">
+          <BookingBlock :event="e" :city="stop?.city ?? null" />
+        </template>
         <template v-for="p in g.pins" :key="p.id">
           <div v-if="isLeg(p)" class="flex items-center gap-3 pl-7 text-[13px] font-bold text-slate-500">
             <span class="h-5 w-0.5 bg-[#CFE3D8]" />
@@ -171,13 +190,27 @@ function firstSentence(s: string) {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#94A39C" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="flex-none" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
           </RouterLink>
         </template>
+        <template v-for="e in g.after" :key="e.booking.id + e.type">
+          <BookingBlock :event="e" :city="stop?.city ?? null" />
+        </template>
       </div>
 
-      <p v-if="!dayPins.length" class="mt-4 rounded-[20px] bg-white md:bg-rocio px-4 py-5 text-center text-[15px] text-slate-500">
+      <p v-if="!dayPins.length && !events.length" class="mt-4 rounded-[20px] bg-white md:bg-rocio px-4 py-5 text-center text-[15px] text-slate-500">
         Nada planeado todavía. Pedile ideas al copiloto o agregá algo vos.
       </p>
 
-      <div v-if="stop?.lodging" class="mt-5 flex items-center gap-2.5 rounded-[20px] bg-brand-soft px-4 py-3.5 text-[14px] text-[#3F5A4D]">
+      <a
+        v-if="hotel && next"
+        :href="mapsSearch(hotel.address || hotel.hotelName!, hotel.address ? null : stop?.city)"
+        target="_blank"
+        rel="noopener"
+        class="mt-5 flex items-center gap-2.5 rounded-[20px] bg-brand-soft px-4 py-3.5 text-[14px] text-[#3F5A4D]"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-none" aria-hidden="true"><path d="M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3" /><circle cx="7" cy="11" r="1.6" /></svg>
+        <span class="flex-1">Dormís en <b class="text-brand-dark">{{ hotel.hotelName }}</b></span>
+        <span class="text-[13px] font-extrabold text-brand">Cómo llegar →</span>
+      </a>
+      <div v-else-if="stop?.lodging && next" class="mt-5 flex items-center gap-2.5 rounded-[20px] bg-brand-soft px-4 py-3.5 text-[14px] text-[#3F5A4D]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-none" aria-hidden="true"><path d="M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3" /><circle cx="7" cy="11" r="1.6" /></svg>
         <!-- Until hotels exist (phase 3) lodging is the zone the route suggested, not a booking. -->
         <span>Zona para dormir: <b class="text-brand-dark">{{ stop.lodging }}</b></span>

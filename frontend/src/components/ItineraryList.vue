@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { GenerationStatus, Pin, Stop, Trip, WeatherDay } from '@/api'
+import type { Booking, GenerationStatus, Pin, Stop, Trip, WeatherDay } from '@/api'
+import { KIND_META, chipLabel, dayEvents, hotelForNight } from '@/bookings'
 import { dayHeadline, daysBetween, fmtDay } from '@/pinMeta'
 import { nightsOf } from '@/tripProfile'
 import { weatherIcon } from '@/weather'
@@ -11,6 +12,7 @@ const props = defineProps<{
   trip: Trip
   stops: Stop[]
   pins: Pin[]
+  bookings: Booking[]
   generation: GenerationStatus | null
   highlightIds: string[]
   weather: Record<string, WeatherDay>
@@ -38,6 +40,12 @@ const byDay = computed(() => {
 const generating = computed(() => !!props.generation?.running)
 const pending = (d: string) => generating.value && !props.generation!.doneDays.includes(d) && !byDay.value.get(d)?.length
 
+/** The transport you booked to get to the next city (on the day you leave), if any. */
+function transferTo(next: Stop) {
+  if (!next.startDate) return null
+  return props.bookings.find((b) => b.kind !== 'hotel' && b.departDate === next.startDate) ?? null
+}
+
 function card(d: string, stop: Stop) {
   const pins = byDay.value.get(d) ?? []
   const head = dayHeadline(pins)
@@ -45,6 +53,7 @@ function card(d: string, stop: Stop) {
   return {
     ...head,
     dayTrip: dayTrip ?? null,
+    events: dayEvents(props.bookings, d),
     highlighted: pins.some((p) => props.highlightIds.includes(p.id)),
   }
 }
@@ -59,7 +68,8 @@ function card(d: string, stop: Stop) {
           <h2 class="font-display truncate text-[21px] leading-tight font-bold tracking-tight">{{ sec.stop.city }}</h2>
           <p class="truncate text-[13px] text-slate-500">
             {{ nightsOf(sec.stop) }} {{ nightsOf(sec.stop) === 1 ? 'noche' : 'noches' }}
-            <template v-if="sec.stop.lodging"> · {{ sec.stop.lodging }}</template>
+            <template v-if="sec.stop.startDate && hotelForNight(bookings, sec.stop.startDate)"> · {{ hotelForNight(bookings, sec.stop.startDate)!.hotelName }}</template>
+            <template v-else-if="sec.stop.lodging"> · {{ sec.stop.lodging }}</template>
             <template v-else-if="sec.stop.dayTrips.length"> · excursión a {{ sec.stop.dayTrips.join(', ') }}</template>
           </p>
         </div>
@@ -92,6 +102,16 @@ function card(d: string, stop: Stop) {
             <span class="h-3 w-1/2 animate-pulse rounded-full bg-slate-100" />
           </div>
           <p v-else class="text-[15px] text-slate-400">Día libre</p>
+          <div v-if="card(d, sec.stop).events.length" class="mt-1.5 flex flex-wrap gap-1.5">
+            <span
+              v-for="e in card(d, sec.stop).events"
+              :key="e.booking.id + e.type"
+              class="inline-flex h-6 items-center gap-1 rounded-full bg-brand-soft pr-2.5 pl-2 text-xs font-bold text-brand-dark"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="KIND_META[e.booking.kind].icon" />
+              {{ chipLabel(e) }}
+            </span>
+          </div>
         </div>
 
         <div v-if="weather[d]" class="flex-none text-center text-xs text-slate-500" :title="weatherIcon(weather[d]!.code).label">
@@ -103,7 +123,10 @@ function card(d: string, stop: Stop) {
 
       <div v-if="sec.next" class="flex items-center gap-2.5 px-1 pt-2 text-[13px] font-bold text-slate-500">
         <span class="flex-1 border-t-2 border-dashed border-[#CFE3D8]" />
-        <template v-if="sec.next.startDate">{{ fmtDay(sec.next.startDate, { weekday: 'short', day: 'numeric' }) }} · </template>a {{ sec.next.city }}
+        <svg v-if="transferTo(sec.next)" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="KIND_META[transferTo(sec.next)!.kind].icon" />
+        <template v-if="sec.next.startDate">{{ fmtDay(sec.next.startDate, { weekday: 'short', day: 'numeric' }) }} · </template>
+        <template v-if="transferTo(sec.next)">{{ `${KIND_META[transferTo(sec.next)!.kind].label} ${transferTo(sec.next)!.departTime ?? ''}`.trim() }} → {{ sec.next.city }}</template>
+        <template v-else>a {{ sec.next.city }}</template>
         <span class="flex-1 border-t-2 border-dashed border-[#CFE3D8]" />
       </div>
     </template>

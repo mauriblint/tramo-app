@@ -485,7 +485,7 @@ const editorTitle = computed(() =>
                   />
                 </div>
               </div>
-              <ItineraryList :trip="trip" :stops="stops" :pins="pins" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
+              <ItineraryList :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
 
             <div v-else-if="tab === 'ideas'" class="-mx-4 md:mx-0 md:overflow-hidden md:rounded-[22px] md:bg-rocio">
@@ -520,6 +520,7 @@ const editorTitle = computed(() =>
           :trip="trip"
           :stops="stops"
           :pins="pins"
+          :bookings="bookings"
           :day="item!"
           :weather="weather"
           @located="(p, np) => Object.assign(p, np)"
