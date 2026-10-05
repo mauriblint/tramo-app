@@ -95,7 +95,7 @@ function firstSentence(s: string) {
 <template>
   <div>
     <!-- Back to the trip + day stepper -->
-    <div class="flex items-center gap-2.5 px-3 pt-3 pb-3 md:px-0 md:pt-0">
+    <div class="flex items-center gap-2.5 px-3 pt-3 pb-3 md:px-0 md:pt-0 md:pb-5">
       <RouterLink :to="`/trips/${trip.id}`" class="flex h-11 min-w-0 items-center gap-1 rounded-full bg-white pr-4 pl-2 text-sm font-extrabold md:bg-rocio">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-none" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
         <span class="truncate">{{ trip.name }}</span>
@@ -126,11 +126,11 @@ function firstSentence(s: string) {
       </div>
     </div>
 
-    <div class="relative h-[240px] md:h-[260px] md:overflow-hidden md:rounded-t-[28px]">
+    <div class="relative h-[240px] md:h-[260px] md:overflow-hidden md:rounded-[24px]">
       <DayMap :points="points" :center="center" />
     </div>
 
-    <section class="relative z-[600] -mt-7 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:rounded-[28px] md:px-5">
+    <section class="relative z-[600] -mt-7 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:mt-6 md:rounded-none md:bg-transparent md:p-0">
       <div class="flex flex-col gap-2 px-1 pb-2">
         <span class="text-[13px] font-extrabold tracking-wide text-brand uppercase">
           {{ fmtDay(day, { weekday: 'short', day: 'numeric', month: 'short' }) }}<template v-if="stop"> · {{ stop.city }}</template>
@@ -154,7 +154,7 @@ function firstSentence(s: string) {
           <RouterLink
             v-else
             :to="`/trips/${trip.id}/pins/${p.id}`"
-            class="flex items-center gap-3.5 rounded-[20px] bg-white py-3.5 pr-3 pl-3.5 transition hover:shadow-[0_6px_18px_rgba(14,31,24,0.08)]"
+            class="flex items-center gap-3.5 rounded-[20px] bg-white py-3.5 md:bg-rocio pr-3 pl-3.5 transition hover:shadow-[0_6px_18px_rgba(14,31,24,0.08)]"
             :class="p.status === 'done' ? 'opacity-60' : ''"
           >
             <span
@@ -173,17 +173,18 @@ function firstSentence(s: string) {
         </template>
       </div>
 
-      <p v-if="!dayPins.length" class="mt-4 rounded-[20px] bg-white px-4 py-5 text-center text-[15px] text-slate-500">
+      <p v-if="!dayPins.length" class="mt-4 rounded-[20px] bg-white md:bg-rocio px-4 py-5 text-center text-[15px] text-slate-500">
         Nada planeado todavía. Pedile ideas al copiloto o agregá algo vos.
       </p>
 
       <div v-if="stop?.lodging" class="mt-5 flex items-center gap-2.5 rounded-[20px] bg-brand-soft px-4 py-3.5 text-[14px] text-[#3F5A4D]">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-none" aria-hidden="true"><path d="M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3" /><circle cx="7" cy="11" r="1.6" /></svg>
-        <span>Dormís en <b class="text-brand-dark">{{ stop.lodging }}</b></span>
+        <!-- Until hotels exist (phase 3) lodging is the zone the route suggested, not a booking. -->
+        <span>Zona para dormir: <b class="text-brand-dark">{{ stop.lodging }}</b></span>
       </div>
 
       <button
-        class="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white"
+        class="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white md:hover:bg-rocio"
         @click="emit('add', day)"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>

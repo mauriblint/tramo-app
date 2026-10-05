@@ -69,7 +69,7 @@ function card(d: string, stop: Stop) {
         v-for="d in sec.days"
         :key="d"
         :to="`/trips/${trip.id}/days/${d}`"
-        class="flex items-center gap-4 rounded-[20px] bg-white py-3.5 pr-3 pl-3.5 transition hover:shadow-[0_6px_18px_rgba(14,31,24,0.08)]"
+        class="flex items-center gap-4 rounded-[20px] bg-white py-3.5 md:bg-rocio pr-3 pl-3.5 transition hover:shadow-[0_6px_18px_rgba(14,31,24,0.08)]"
         :class="[d === today ? 'ring-2 ring-sun' : '', card(d, sec.stop).highlighted ? 'ring-2 ring-brand' : '']"
       >
         <div class="w-11 flex-none text-center">

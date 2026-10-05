@@ -69,7 +69,7 @@ function onMove(e: Event) {
 
 <template>
   <div>
-    <div class="flex items-center gap-2.5 px-3 pt-3 pb-3 md:px-0 md:pt-0">
+    <div class="flex items-center gap-2.5 px-3 pt-3 pb-3 md:px-0 md:pt-0 md:pb-5">
       <RouterLink :to="back.to" class="flex h-11 min-w-0 items-center gap-1 rounded-full bg-white pr-4 pl-2 text-sm font-extrabold md:bg-rocio">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-none" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
         <span class="truncate">{{ back.label }}</span>
@@ -78,11 +78,11 @@ function onMove(e: Event) {
       <button class="h-11 flex-none rounded-full bg-white px-4 text-sm font-extrabold md:bg-rocio" @click="emit('edit', pin)">Editar</button>
     </div>
 
-    <div class="relative h-[200px] md:h-[220px] md:overflow-hidden md:rounded-t-[28px]">
+    <div class="relative h-[200px] md:h-[220px] md:overflow-hidden md:rounded-[24px]">
       <DayMap :points="points" :center="center" :zoom="15" />
     </div>
 
-    <section class="relative z-[600] -mt-7 flex flex-col gap-4 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:rounded-[28px] md:px-5">
+    <section class="relative z-[600] -mt-7 flex flex-col gap-4 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:mt-6 md:rounded-none md:bg-transparent md:p-0">
       <div class="flex flex-col gap-2 px-1">
         <span v-if="eyebrow" class="text-[13px] font-extrabold tracking-wide text-brand uppercase">{{ eyebrow }}</span>
         <h1 class="font-display text-[30px] leading-[1.05] font-bold tracking-tight md:text-[34px]">{{ pin.title }}</h1>
@@ -114,28 +114,28 @@ function onMove(e: Event) {
         </button>
       </div>
 
-      <div class="rounded-[22px] bg-white px-5 py-1">
+      <div class="rounded-[22px] bg-white px-5 py-1 md:bg-rocio">
         <div v-if="pin.day" class="flex items-start gap-3.5 border-b border-[#EEF2EF] py-3.5 last:border-0">
-          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio md:bg-white">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
           </span>
           <div><div class="text-xs font-bold text-slate-500">Cuándo</div><div class="text-[15px] font-bold">{{ fmtDay(pin.day, { weekday: 'long', day: 'numeric', month: 'long' }) }}<template v-if="pin.timeOfDay"> · {{ TIME_META[pin.timeOfDay].label.toLowerCase() }}</template></div></div>
         </div>
         <div v-if="pin.city" class="flex items-start gap-3.5 border-b border-[#EEF2EF] py-3.5 last:border-0">
-          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio md:bg-white">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" /></svg>
           </span>
           <div><div class="text-xs font-bold text-slate-500">Dónde</div><div class="text-[15px] font-bold">{{ pin.city }}<span v-if="pin.geoStatus === 'approx'" class="font-medium text-slate-500"> · ubicación aproximada</span></div></div>
         </div>
         <div class="flex items-start gap-3.5 border-b border-[#EEF2EF] py-3.5 last:border-0">
-          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio text-base">{{ TYPE_META[pin.type].emoji }}</span>
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio md:bg-white text-base">{{ TYPE_META[pin.type].emoji }}</span>
           <div>
             <div class="text-xs font-bold text-slate-500">Tipo</div>
             <div class="text-[15px] font-bold">{{ TYPE_META[pin.type].label }}<template v-if="pin.tags.length"> · {{ pin.tags.join(', ') }}</template></div>
           </div>
         </div>
         <div v-if="pin.url" class="flex items-start gap-3.5 py-3.5">
-          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-rocio md:bg-white">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>
           </span>
           <div class="min-w-0"><div class="text-xs font-bold text-slate-500">Link</div><a :href="pin.url" target="_blank" rel="noopener" class="block truncate text-[15px] font-bold">{{ pin.url }}</a></div>

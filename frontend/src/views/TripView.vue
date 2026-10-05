@@ -12,6 +12,7 @@ import InstallCard from '@/components/InstallCard.vue'
 import DayView from '@/components/DayView.vue'
 import ItineraryList from '@/components/ItineraryList.vue'
 import PinDetail from '@/components/PinDetail.vue'
+import TripSidebar from '@/components/TripSidebar.vue'
 import TripTabs, { type TripTab } from '@/components/TripTabs.vue'
 import { canOfferInstall, dismissInstall, install } from '@/install'
 import TripCover from '@/components/TripCover.vue'
@@ -48,6 +49,28 @@ const tab = computed<TripTab>(() => {
   const t = route.query.tab
   return t === 'transporte' || t === 'hoteles' || t === 'ideas' ? t : 'itinerario'
 })
+/** The sidebar keeps the section you came from highlighted while you're inside a day or an activity. */
+const navTab = computed<TripTab>(() => (level.value === 'trip' ? tab.value : currentPin.value && !currentPin.value.day ? 'ideas' : 'itinerario'))
+const SECTION = computed(() => ({
+  itinerario: {
+    title: 'Itinerario',
+    subtitle: [days.value.length && `${days.value.length} días`, stops.value.map((s) => s.city).join(' → ')].filter(Boolean).join(' · '),
+    action: 'Agregar actividad',
+  },
+  transporte: { title: 'Transporte', subtitle: 'Vuelos, trenes y buses', action: 'Agregar transporte' },
+  hoteles: { title: 'Hoteles', subtitle: 'Dónde dormís cada noche', action: 'Agregar hotel' },
+  ideas: { title: 'Ideas', subtitle: 'Lugares guardados que todavía no tienen día', action: 'Agregar idea' },
+}))
+
+// Desktop scrolls inside the white panel: start each screen at the top.
+const panel = ref<HTMLElement>()
+const isDesktop = ref(typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches)
+if (typeof window !== 'undefined') window.matchMedia('(min-width: 768px)').addEventListener('change', (e) => (isDesktop.value = e.matches))
+watch(
+  () => route.fullPath,
+  () => panel.value?.scrollTo({ top: 0 }),
+)
+
 const currentPin = computed(() => (level.value === 'pin' ? (pins.value.find((p) => p.id === props.item) ?? null) : null))
 const weather = useTripWeather(trip, stops)
 
@@ -357,12 +380,33 @@ const editorTitle = computed(() =>
     </div>
 
     <!-- ============ Planned: trip → day → activity, one narrow column ============ -->
-    <div v-else-if="trip" class="min-h-dvh bg-rocio pb-32 md:bg-white md:px-4 md:pt-6">
-      <div class="mx-auto w-full max-w-[720px]">
+    <!-- Phone: one column (map, sheet, tabs). Desktop: the green trip sidebar + one white panel showing one thing at a time. -->
+    <div v-else-if="trip" class="min-h-dvh bg-rocio pb-32 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
+      <TripSidebar class="hidden md:flex" :trip="trip" :facts="tripFacts" :active="navTab" :ideas="ideas.length" @copilot="sheet = 'chat'" @edit="openTripEditor" />
+
+      <div ref="panel" class="md:min-w-0 md:flex-1 md:overflow-y-auto md:rounded-[28px] md:bg-white">
+      <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:py-7">
         <template v-if="level === 'trip'">
-          <div class="relative h-[300px] md:overflow-hidden md:rounded-t-[28px]">
+          <!-- Desktop section header -->
+          <div class="mb-5 hidden items-end justify-between gap-4 md:flex">
+            <div class="min-w-0">
+              <h1 class="font-display text-[30px] leading-tight font-bold">{{ SECTION[tab].title }}</h1>
+              <p class="mt-0.5 text-[14px] text-slate-500">{{ SECTION[tab].subtitle }}</p>
+            </div>
+            <button
+              class="btn-primary h-11 flex-none px-5"
+              :disabled="tab === 'transporte' || tab === 'hoteles'"
+              :title="tab === 'transporte' || tab === 'hoteles' ? 'Muy pronto' : undefined"
+              @click="openNew(null)"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+              {{ SECTION[tab].action }}
+            </button>
+          </div>
+
+          <div v-if="tab === 'itinerario' || !isDesktop" class="relative h-[300px] md:h-[260px] md:overflow-hidden md:rounded-[24px]">
             <TripCover :stops="stops" :destination="trip.destination" />
-            <div class="absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3 md:p-4">
+            <div class="absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3 md:hidden">
               <RouterLink to="/plan" aria-label="Mis viajes" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
               </RouterLink>
@@ -372,8 +416,8 @@ const editorTitle = computed(() =>
             </div>
           </div>
 
-          <section class="relative z-[600] -mt-7 flex flex-col gap-5 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:rounded-[28px] md:px-5">
-            <div class="px-1">
+          <section class="relative z-[600] -mt-7 flex flex-col gap-5 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:mt-6 md:rounded-none md:bg-transparent md:p-0">
+            <div class="px-1 md:hidden">
               <h1 class="font-display text-[32px] leading-[1.04] font-bold md:text-[38px]">{{ trip.name }}</h1>
               <p class="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[15px] text-slate-500">
                 <template v-for="(f, i) in tripFacts" :key="f">
@@ -383,7 +427,7 @@ const editorTitle = computed(() =>
               </p>
             </div>
 
-            <TripTabs :trip-id="trip.id" :active="tab" :ideas="ideas.length" />
+            <TripTabs class="md:hidden" :trip-id="trip.id" :active="tab" :ideas="ideas.length" />
 
             <template v-if="tab === 'itinerario'">
               <div v-if="generation?.running" class="rounded-2xl bg-brand-soft px-4 py-3">
@@ -401,7 +445,7 @@ const editorTitle = computed(() =>
               <ItineraryList :trip="trip" :stops="stops" :pins="pins" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
 
-            <div v-else-if="tab === 'ideas'" class="-mx-4 md:-mx-5">
+            <div v-else-if="tab === 'ideas'" class="-mx-4 md:mx-0 md:overflow-hidden md:rounded-[22px] md:bg-rocio">
               <PinBoard
                 :pins="ideas"
                 :highlight-ids="highlightIds"
@@ -414,7 +458,7 @@ const editorTitle = computed(() =>
               />
             </div>
 
-            <div v-else class="flex flex-col items-center gap-3 rounded-[22px] bg-white px-6 py-10 text-center">
+            <div v-else class="flex flex-col items-center gap-3 rounded-[22px] bg-white px-6 py-10 text-center md:bg-rocio">
               <span class="grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft">
                 <svg v-if="tab === 'transporte'" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" /></svg>
                 <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3" /><circle cx="7" cy="11" r="1.6" /></svg>
@@ -454,9 +498,10 @@ const editorTitle = computed(() =>
           @located="(p, np) => Object.assign(p, np)"
         />
       </div>
+      </div>
 
       <!-- Copilot bar: it knows which day or activity you're looking at -->
-      <div class="pointer-events-none fixed inset-x-0 bottom-0 z-[700] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <div class="pointer-events-none fixed inset-x-0 bottom-0 z-[700] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:hidden">
         <button
           class="pointer-events-auto mx-auto flex h-14 w-full max-w-[720px] items-center gap-3 rounded-full bg-noche pr-2 pl-5 text-left text-white shadow-[0_12px_28px_rgba(14,31,24,0.3)]"
           @click="sheet = 'chat'"
