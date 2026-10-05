@@ -4,6 +4,7 @@ import { GREETING, HttpError, chat, cleanDraft, extractPins, modeFor, nextQuesti
 import * as repo from './db.js'
 import { generationStatus, startGeneration } from './ai/generate.js'
 import { requireUser } from './auth.js'
+import * as bookings from './bookings.js'
 import { geocode, locatePin } from './geo.js'
 import { getWeather } from './weather.js'
 
@@ -77,6 +78,7 @@ router.get('/trips/:tripId', (req, res) => {
     trip,
     stops: repo.listStops(trip.id),
     pins: repo.listPins(trip.id),
+    bookings: bookings.listBookings(trip.id),
     messages: repo.listMessages(trip.id),
     generation: generationStatus(trip.id),
     question: currentQuestion(trip.id),
@@ -90,6 +92,31 @@ router.patch('/trips/:tripId', (req, res) => {
 
 router.delete('/trips/:tripId', (req, res) => {
   repo.deleteTrip(tripOr404(req).id)
+  res.status(204).end()
+})
+
+// ---- bookings (flights, trains, buses, hotels)
+
+function bookingOr404(req: Request): bookings.Booking {
+  const b = bookings.getBooking(String(req.params.bookingId))
+  if (!b || b.tripId !== req.params.tripId) throw new HttpError(404, 'Reserva no encontrada')
+  return b
+}
+
+router.post('/trips/:tripId/bookings', (req, res) => {
+  const trip = tripOr404(req)
+  res.status(201).json(bookings.createBooking(trip.id, bookings.cleanBooking(req.body)))
+})
+
+router.patch('/trips/:tripId/bookings/:bookingId', (req, res) => {
+  tripOr404(req)
+  const cur = bookingOr404(req)
+  res.json(bookings.updateBooking(cur.id, bookings.cleanBooking(req.body, cur)))
+})
+
+router.delete('/trips/:tripId/bookings/:bookingId', (req, res) => {
+  tripOr404(req)
+  bookings.deleteBooking(bookingOr404(req).id)
   res.status(204).end()
 })
 
