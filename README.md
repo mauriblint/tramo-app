@@ -35,7 +35,6 @@ APP_URL=https://trytramo.com
 COOKIE_SECURE=true
 RESEND_API_KEY=re_...
 RESEND_FROM=tramo <hola@trytramo.com>
-ADMIN_EMAIL=tu@email.com
 ENV
 www-deploy tramo                                   # primer build + pm2 start
 cp ops/nginx-tramo.conf /etc/nginx/sites-available/tramo   # editar SERVER_NAME

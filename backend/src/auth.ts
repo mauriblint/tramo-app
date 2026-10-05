@@ -127,10 +127,6 @@ export function verifyLogin(input: { token?: string; email?: string; code?: stri
     user = { id: randomUUID(), name: row.name ?? row.email.split('@')[0]!, email: row.email }
     db.prepare('INSERT INTO users (id, name, email, created_at) VALUES (?, ?, ?, ?)').run(user.id, user.name, user.email, now())
   }
-  // Trips created before accounts existed belong to the owner.
-  if (config.adminEmail && user.email === normEmail(config.adminEmail)) {
-    db.prepare('UPDATE trips SET user_id = ? WHERE user_id IS NULL').run(user.id)
-  }
 
   const sessionToken = randomBytes(32).toString('base64url')
   db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(
