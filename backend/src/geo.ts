@@ -37,12 +37,24 @@ export async function geocode(query: string): Promise<{ lat: number; lng: number
 
 const LOCATABLE: Pin['type'][] = ['place', 'food', 'activity', 'route']
 
+/**
+ * Names to try, most specific first. Generated titles often carry a detail the map doesn't know
+ * ("Tokyo Metropolitan Government Building, observatorio sur", "Sensō-ji (al amanecer)"):
+ * retry with just the place name.
+ */
+export function nameVariants(title: string): string[] {
+  const t = title.trim()
+  const noParens = t.replace(/\s*\([^)]*\)/g, '').trim()
+  const head = noParens.split(/\s*(?:,|;|\s[–—-]\s|:)\s*/)[0]!.trim()
+  return [...new Set([t, noParens, head])].filter((v) => v.length >= 3)
+}
+
 /** Resolve a pin's coordinates: exact place first, then fall back to its city (approximate). */
 export async function locatePin(pin: Pin, trip: Trip): Promise<Pin> {
   if (pin.geoStatus) return pin
   const region = pin.city ?? trip.destination
   const exact = LOCATABLE.includes(pin.type)
-    ? [pin.city && `${pin.title}, ${pin.city}`, trip.destination && `${pin.title}, ${trip.destination}`]
+    ? nameVariants(pin.title).flatMap((name) => [pin.city && `${name}, ${pin.city}`, trip.destination && `${name}, ${trip.destination}`])
     : []
   for (const q of exact) {
     if (!q) continue

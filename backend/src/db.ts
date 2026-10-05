@@ -197,6 +197,14 @@ for (const [col, def] of [
 const stopCols = new Set((db.prepare('PRAGMA table_info(stops)').all() as { name: string }[]).map((c) => c.name))
 if (!stopCols.has('day_trips')) db.exec(`ALTER TABLE stops ADD COLUMN day_trips TEXT NOT NULL DEFAULT '[]'`)
 
+// One-off data migrations, numbered with SQLite's user_version.
+const dataVersion = db.pragma('user_version', { simple: true }) as number
+if (dataVersion < 1) {
+  // The geocoder learned to retry without trailing details ("…, observatorio sur"): look up approximate pins again.
+  db.exec(`UPDATE pins SET lat = NULL, lng = NULL, geo_status = NULL WHERE geo_status = 'approx'`)
+  db.pragma('user_version = 1')
+}
+
 const now = () => new Date().toISOString()
 
 type Row = Record<string, any>

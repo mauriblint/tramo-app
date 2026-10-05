@@ -30,9 +30,9 @@ function draw() {
     const html = `<div class="cover-pin"><span class="cover-pin-n" style="${p.dark ? 'background:#0E1F18' : ''}">${p.n}</span>${label}</div>`
     L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html, iconSize: [0, 0], iconAnchor: [15, 15] }), interactive: false }).addTo(layer)
   }
-  if (path.length > 1) map.fitBounds(L.latLngBounds(path), { paddingTopLeft: [40, 76], paddingBottomRight: [60, 56], maxZoom: 16 })
-  else if (path.length === 1) map.setView(path[0]!, props.zoom ?? 15)
-  else if (props.center) map.setView([props.center.lat, props.center.lng], 12)
+  if (path.length > 1) map.fitBounds(L.latLngBounds(path), { paddingTopLeft: [40, 76], paddingBottomRight: [60, 56], maxZoom: 16, animate: false })
+  else if (path.length === 1) map.setView(path[0]!, props.zoom ?? 15, { animate: false })
+  else if (props.center) map.setView([props.center.lat, props.center.lng], 12, { animate: false })
 }
 
 onMounted(() => {
