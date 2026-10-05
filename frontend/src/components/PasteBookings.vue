@@ -5,7 +5,7 @@ import { api, type Booking, type BookingInput } from '@/api'
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT, KIND_META } from '@/bookings'
 import { fmtDay } from '@/pinMeta'
 
-/** "Pegá tu confirmación": paste an email, review what was understood, save it. */
+/** Import a booking: paste an email, review what was understood, save it. */
 const props = defineProps<{ tripId: string }>()
 const emit = defineEmits<{ saved: [Booking[]]; close: [] }>()
 
@@ -37,8 +37,8 @@ async function read() {
     skipped.value = res.skipped
     if (!res.bookings.length)
       error.value = res.skipped
-        ? `Encontré ${res.skipped === 1 ? 'una reserva' : `${res.skipped} reservas`} pero con datos incompletos (${res.problems.join(', ').toLowerCase()}). Probá de nuevo o cargala a mano.`
-        : 'No encontré reservas en ese texto. ¿Pegaste el mail completo?'
+        ? `Se encontró ${res.skipped === 1 ? 'una reserva' : `${res.skipped} reservas`} pero con datos incompletos (${res.problems.join(', ').toLowerCase()}). Intenta de nuevo o cárgala manualmente.`
+        : 'No se encontraron reservas en el texto. Verifica que hayas copiado el email completo.'
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -62,7 +62,7 @@ async function saveAll() {
   }
 }
 
-const title = computed(() => (found.value?.length ? `Encontré ${found.value.length} ${found.value.length === 1 ? 'reserva' : 'reservas'}` : 'Pegá tu confirmación'))
+const title = computed(() => (found.value?.length ? `${found.value.length} ${found.value.length === 1 ? 'reserva encontrada' : 'reservas encontradas'}` : 'Importar reserva'))
 </script>
 
 <template>
@@ -78,7 +78,7 @@ const title = computed(() => (found.value?.length ? `Encontré ${found.value.len
       <!-- 1 · paste -->
       <template v-if="!found?.length">
         <p class="text-[15px] leading-relaxed text-slate-500">
-          Pegá el email de confirmación de tu vuelo, tren u hospedaje (aerolínea, Booking, Airbnb, etc.). Extraemos los datos de la reserva para que los revises antes de guardarlos.
+          Copia y pega el email de confirmación de tu vuelo, tren u hospedaje (aerolínea, Booking, Airbnb, etc.). Extraemos los datos de la reserva para que los revises antes de guardarlos.
         </p>
         <label class="sr-only" for="paste-box">Texto del mail</label>
         <textarea
@@ -86,12 +86,12 @@ const title = computed(() => (found.value?.length ? `Encontré ${found.value.len
           ref="box"
           v-model="text"
           rows="8"
-          placeholder="Pegá aquí el email de confirmación"
+          placeholder="Email de confirmación"
           class="rounded-2xl border-[1.5px] border-[#DCE3DF] px-4 py-3 text-[15px] leading-relaxed outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
         />
         <p v-if="error" class="text-sm font-semibold text-rose-600">{{ error }}</p>
         <button class="btn-primary h-12 text-[15px]" :disabled="busy || text.trim().length < 20" @click="read">
-          {{ busy ? 'Leyendo el mail…' : 'Leer mail' }}
+          {{ busy ? 'Importando datos…' : 'Importar datos' }}
         </button>
       </template>
 
@@ -122,9 +122,9 @@ const title = computed(() => (found.value?.length ? `Encontré ${found.value.len
           </li>
         </ul>
         <p v-if="skipped" class="text-[13px] text-slate-500">
-          {{ skipped }} {{ skipped === 1 ? 'reserva quedó afuera' : 'reservas quedaron afuera' }} por datos incompletos: podés cargarlas a mano.
+          {{ skipped }} {{ skipped === 1 ? 'reserva no se importó' : 'reservas no se importaron' }} por datos incompletos; puedes cargarlas manualmente.
         </p>
-        <p class="text-[13px] text-slate-500">Revisalas: después podés editar cualquiera desde la lista.</p>
+        <p class="text-[13px] text-slate-500">Revisa los datos antes de guardar. Podrás editarlos luego desde la lista.</p>
         <p v-if="error" class="text-sm font-semibold text-rose-600">{{ error }}</p>
         <div class="flex items-center gap-3">
           <button class="btn-primary h-12 flex-1 text-[15px]" :disabled="busy" @click="saveAll">
