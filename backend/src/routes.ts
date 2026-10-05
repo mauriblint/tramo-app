@@ -5,6 +5,7 @@ import * as repo from './db.js'
 import { generationStatus, startGeneration } from './ai/generate.js'
 import { requireUser } from './auth.js'
 import * as bookings from './bookings.js'
+import { parseBookings } from './ai/bookings.js'
 import { geocode, locatePin } from './geo.js'
 import { getWeather } from './weather.js'
 
@@ -106,6 +107,12 @@ function bookingOr404(req: Request): bookings.Booking {
 router.post('/trips/:tripId/bookings', (req, res) => {
   const trip = tripOr404(req)
   res.status(201).json(bookings.createBooking(trip.id, bookings.cleanBooking(req.body)))
+})
+
+/** Read a pasted confirmation email into bookings for the user to review (nothing is saved). */
+router.post('/trips/:tripId/bookings/parse', async (req, res) => {
+  const trip = tripOr404(req)
+  res.json(await parseBookings(trip, String(req.body?.text ?? '')))
 })
 
 router.patch('/trips/:tripId/bookings/:bookingId', (req, res) => {

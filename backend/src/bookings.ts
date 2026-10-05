@@ -98,6 +98,7 @@ export function cleanBooking(body: any, current?: Booking): BookingInput {
     if (out[f] && !DATE.test(out[f]!)) throw new HttpError(400, 'Fecha inválida')
   }
   for (const f of ['departTime', 'arriveTime', 'checkInTime', 'checkOutTime'] as const) {
+    if (out[f] && /^\d:\d{2}$/.test(out[f]!)) out[f] = `0${out[f]}`
     if (out[f] && !TIME.test(out[f]!)) throw new HttpError(400, 'Hora inválida')
   }
 
