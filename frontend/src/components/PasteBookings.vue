@@ -78,7 +78,7 @@ const title = computed(() => (found.value?.length ? `Encontré ${found.value.len
       <!-- 1 · paste -->
       <template v-if="!found?.length">
         <p class="text-[15px] leading-relaxed text-slate-500">
-          Copiá el mail de la aerolínea, del tren o del hotel (Booking, Airbnb…) y pegalo acá. Saco los datos y los revisás antes de guardar.
+          Pegá el email de confirmación de tu vuelo, tren u hospedaje (aerolínea, Booking, Airbnb, etc.). Extraemos los datos de la reserva para que los revises antes de guardarlos.
         </p>
         <label class="sr-only" for="paste-box">Texto del mail</label>
         <textarea
@@ -86,7 +86,7 @@ const title = computed(() => (found.value?.length ? `Encontré ${found.value.len
           ref="box"
           v-model="text"
           rows="8"
-          placeholder="Pegá acá el mail de confirmación…"
+          placeholder="Pegá aquí el email de confirmación"
           class="rounded-2xl border-[1.5px] border-[#DCE3DF] px-4 py-3 text-[15px] leading-relaxed outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
         />
         <p v-if="error" class="text-sm font-semibold text-rose-600">{{ error }}</p>
