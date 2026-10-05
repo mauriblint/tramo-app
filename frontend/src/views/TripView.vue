@@ -450,10 +450,21 @@ const editorTitle = computed(() =>
                 <span v-for="p in itineraryPills" :key="p" class="inline-flex h-7 items-center rounded-full bg-rocio px-3 text-[13px] font-bold text-slate-600">{{ p }}</span>
               </div>
             </div>
+            <div class="flex flex-none items-center gap-2">
+            <button
+              v-if="tab === 'viajes' || tab === 'hoteles'"
+              class="inline-flex h-11 items-center gap-1.5 rounded-full border-[1.5px] border-[#DCE3DF] px-4 text-sm font-bold hover:border-brand hover:text-brand-dark"
+              title="Pegá el mail de confirmación y lo cargo yo"
+              @click="pasting = true"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /></svg>
+              Importar mail
+            </button>
             <button class="btn-primary h-11 flex-none px-5" @click="tab === 'viajes' || tab === 'hoteles' ? openBooking() : openNew(null)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {{ SECTION[tab].action }}
             </button>
+            </div>
           </div>
 
           <div v-if="tab === 'itinerario' || !isDesktop" class="relative h-[300px] md:h-[260px] md:overflow-hidden md:rounded-[24px]">
@@ -511,25 +522,16 @@ const editorTitle = computed(() =>
             </div>
 
             <template v-else>
-              <button
-                class="flex h-12 items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white md:hidden"
-                @click="openBooking()"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-                {{ SECTION[tab].action }}
-              </button>
-              <button
-                class="flex items-center gap-3 rounded-[20px] border-[1.5px] border-dashed border-[#7EC9A6] bg-brand-soft px-4 py-3.5 text-left hover:border-brand"
-                @click="pasting = true"
-              >
-                <span class="grid h-10 w-10 flex-none place-items-center rounded-xl bg-brand">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 13h6M9 17h4" /></svg>
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block text-[15px] font-extrabold text-brand-dark">Pegá tu confirmación</span>
-                  <span class="block text-[13px] leading-snug text-[#3F5A4D]">{{ tab === 'viajes' ? 'El mail de la aerolínea o del tren' : 'El mail de Booking, Airbnb o del hotel' }} y lo cargo yo.</span>
-                </span>
-              </button>
+              <div class="grid grid-cols-2 gap-2 md:hidden">
+                <button class="flex h-12 items-center justify-center gap-2 rounded-full border-[1.5px] border-[#DCE3DF] bg-white text-[15px] font-bold" @click="pasting = true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /></svg>
+                  Importar mail
+                </button>
+                <button class="btn-primary h-12 text-[15px]" @click="openBooking()">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  {{ SECTION[tab].action }}
+                </button>
+              </div>
               <TransportList v-if="tab === 'viajes'" :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
               <HotelList v-else :trip="trip" :stops="stops" :bookings="bookings" @edit="editBooking" @add="openBooking" />
             </template>
