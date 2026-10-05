@@ -69,37 +69,3 @@ onBeforeUnmount(() => map?.remove())
     <span class="pointer-events-none absolute right-2 bottom-8 z-[400] text-[9px] text-slate-500">© Esri</span>
   </div>
 </template>
-
-<style>
-.cover-pin {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  font-family: var(--font-sans);
-}
-.cover-pin-n {
-  min-width: 30px;
-  height: 30px;
-  padding: 0 7px;
-  box-sizing: border-box;
-  border-radius: 15px;
-  background: #0a7a55;
-  color: #fff;
-  border: 2.5px solid #fff;
-  box-shadow: 0 3px 10px rgb(14 31 24 / 0.25);
-  display: grid;
-  place-items: center;
-  font-size: 13px;
-  font-weight: 800;
-}
-.cover-pin-city {
-  background: rgb(255 255 255 / 0.92);
-  color: #0e1f18;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 10px;
-  box-shadow: 0 2px 6px rgb(14 31 24 / 0.12);
-}
-</style>

@@ -16,11 +16,12 @@ const router = createRouter({
   routes: [
     { path: '/', component: LandingView, meta: { title: 'tramo · Tu viaje, tramo a tramo' } },
     { path: '/plan', component: PlanView, meta: { title: 'Planificá tu viaje · tramo' } },
-    { path: '/trips/:id', component: TripView, props: true, meta: { auth: true } },
+    // One route for the trip, a day and an activity: the same TripView stays mounted (data, chat and polling survive navigation).
+    { path: '/trips/:id/:section(days|pins)?/:item?', component: TripView, props: true, meta: { auth: true } },
     { path: '/auth/verify', component: VerifyView },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
-  scrollBehavior: () => ({ top: 0 }),
+  scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
 })
 
 router.beforeEach(async (to) => {

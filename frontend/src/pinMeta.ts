@@ -53,3 +53,23 @@ export function daysBetween(start: string | null, end: string | null): string[] 
 
 export const fmtDay = (d: string, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }) =>
   new Date(`${d}T00:00:00`).toLocaleDateString('es', opts).replace(/\./g, '')
+
+/** The stop you're based at on a given day: from its arrival day up to the day before leaving (the last stop keeps its last day). */
+export function stopForDay<S extends { startDate: string | null; endDate: string | null }>(stops: S[], day: string): S | null {
+  return (
+    stops.find((s, i) => s.startDate && s.endDate && day >= s.startDate && (i === stops.length - 1 ? day <= s.endDate : day < s.endDate)) ?? null
+  )
+}
+
+/**
+ * A day's headline until the generator writes real titles: its first places as the title,
+ * the rest as a one-line summary. Transfers ("route" pins) don't name the day.
+ */
+export function dayHeadline(pins: Pick<Pin, 'title' | 'type'>[]): { title: string; summary: string } {
+  const named = pins.filter((p) => p.type !== 'route' && p.type !== 'summary')
+  const list = named.length ? named : pins
+  return {
+    title: list.slice(0, 2).map((p) => p.title).join(' y '),
+    summary: list.slice(2).map((p) => p.title).join(' · '),
+  }
+}
