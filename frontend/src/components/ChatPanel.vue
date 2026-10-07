@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
-import type { Message, PinDraft } from '@/api'
+import type { Message } from '@/api'
 import { renderMd } from '@/markdown'
 import type { QuickReply } from '@/tripProfile'
 import type { Question } from '@/api'
-import { TYPE_META } from '@/pinMeta'
+import CopilotAvatar from '@/components/CopilotAvatar.vue'
+import { fmtDay } from '@/pinMeta'
+import { PIN_LOOK, googleMapsSearch, isPlace, oneLine } from '@/pinIcons'
 
 const props = defineProps<{
   messages: Message[]
@@ -94,80 +96,85 @@ watch(
 )
 onMounted(scrollBottom)
 
-const preview = (d: PinDraft) => d.body.replace(/[#*_>`]/g, '').slice(0, 140)
 </script>
 
 <template>
   <div class="flex h-full flex-col">
-    <div ref="scroller" class="flex-1 space-y-4 overflow-y-auto p-3">
+    <div ref="scroller" class="@container flex-1 space-y-4 overflow-y-auto px-3 pt-3 pb-2">
       <div v-if="!messages.length && !sending" class="mx-auto mt-8 max-w-md text-center text-slate-600">
-        <div class="text-4xl">💬</div>
-        <p class="mt-2">Preguntá lo que quieras sobre el viaje, pegá texto de otro chat o una web, o pedí "guardame esto".</p>
+        <p class="font-display text-xl font-bold text-noche">¿En qué te ayudo?</p>
+        <p class="mt-1.5 text-[15px]">Pedime ideas, cambios en el itinerario o lo que quieras saber. Si algo te gusta, decime “guardalo”.</p>
       </div>
 
-      <div v-for="m in messages" :key="m.id" :class="m.role === 'user' ? 'flex justify-end' : ''">
-        <div
-          v-if="m.role === 'user'"
-          class="max-w-[85%] rounded-[20px] rounded-tr-md bg-brand px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-white"
-        >
-          {{ m.content }}
-          <div v-if="!simple" class="mt-1 text-right">
-            <button class="text-xs text-mint-text hover:text-white" :disabled="extractingId === m.id" @click="emit('extract', m)">
-              {{ extractingId === m.id ? 'Extrayendo…' : '📌 Pinear' }}
-            </button>
+      <div v-for="m in messages" :key="m.id" class="flex flex-col gap-1.5">
+        <!-- You -->
+        <div v-if="m.role === 'user'" class="flex justify-end">
+          <div class="max-w-[85%] rounded-[22px] rounded-br-md bg-brand px-4 py-2.5 text-[15px] leading-relaxed whitespace-pre-wrap text-white">
+            {{ m.content }}
           </div>
         </div>
 
-        <div v-else class="max-w-full">
-          <div class="md max-w-[92%] rounded-[20px] rounded-tl-md border border-slate-200 bg-white px-4 py-3" v-html="renderMd(m.content)" />
-          <div v-if="!simple" class="mt-1 flex gap-3 px-1">
-            <button
-              class="text-xs font-medium text-indigo-600 hover:underline disabled:opacity-50"
-              :disabled="extractingId === m.id"
-              @click="emit('extract', m)"
-            >
-              {{ extractingId === m.id ? 'Extrayendo pins…' : '📌 Pinear esta respuesta' }}
-            </button>
+        <!-- Copilot: its text in one bubble, then every recommendation in its own bubble -->
+        <template v-else>
+          <div class="flex items-start gap-2.5">
+            <CopilotAvatar />
+            <div class="md max-w-[92%] min-w-0 rounded-[22px] rounded-tl-md bg-rocio px-4 py-2.5 text-[15px] @2xl:max-w-[75%]" v-html="renderMd(m.content)" />
           </div>
-
-          <div v-if="m.suggestions.length" class="mt-2 grid gap-2 sm:grid-cols-2">
-            <div
-              v-for="(s, i) in m.suggestions"
-              :key="i"
-              class="rounded-xl border p-2.5 text-sm"
-              :class="s.pinId ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-indigo-300 bg-indigo-50/40'"
-            >
-              <div class="flex items-start gap-1.5">
-                <span>{{ TYPE_META[s.draft.type].emoji }}</span>
-                <div class="min-w-0 flex-1">
-                  <div class="font-semibold">{{ s.draft.title }}</div>
-                  <div v-if="s.draft.city" class="text-xs text-slate-500">{{ s.draft.city }}</div>
-                </div>
-                <button v-if="!s.pinId" class="text-slate-400 hover:text-slate-700" title="Descartar" @click="emit('dismiss', m, i)">
-                  ×
-                </button>
-              </div>
-              <p class="mt-1 line-clamp-3 text-slate-600">{{ preview(s.draft) }}</p>
-              <div class="mt-2 flex gap-2">
-                <template v-if="!s.pinId">
-                  <button class="btn-primary px-2.5 py-1 text-xs" @click="emit('accept', m, i)">+ Añadir al trip</button>
-                  <button class="btn px-2 py-1 text-xs" @click="emit('editAccept', m, i)">Editar</button>
-                </template>
-                <span v-else class="text-xs font-medium text-emerald-700">✅ En el trip</span>
-              </div>
+          <div v-for="(sg, i) in m.suggestions" :key="i" class="flex items-start gap-2.5">
+            <span class="hidden w-[34px] flex-none @md:block" />
+            <div class="flex max-w-[92%] min-w-0 flex-1 items-center gap-3 rounded-[22px] rounded-tl-md bg-rocio py-2.5 pr-2.5 pl-3 @2xl:max-w-[75%]">
+              <span class="grid h-10 w-10 flex-none place-items-center rounded-xl" :style="{ background: PIN_LOOK[sg.draft.type].bg }">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" :stroke="PIN_LOOK[sg.draft.type].fg" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="PIN_LOOK[sg.draft.type].icon" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-[15px] leading-snug font-extrabold">{{ sg.draft.title }}</span>
+                <span v-if="sg.draft.body" class="block text-[13px] leading-snug text-slate-600">{{ oneLine(sg.draft.body) }}</span>
+                <span v-if="sg.pinId && sg.draft.day" class="block text-xs font-bold text-brand-dark">En el itinerario · {{ fmtDay(sg.draft.day) }}</span>
+                <span v-else-if="isPlace(sg.draft.type)" class="block truncate text-xs text-slate-500">{{ sg.draft.city ?? '' }}</span>
+                <span v-else class="block text-xs font-bold text-[#6B4E00]">Idea · sin lugar</span>
+              </span>
+              <a
+                v-if="isPlace(sg.draft.type)"
+                :href="googleMapsSearch(sg.draft)"
+                target="_blank"
+                rel="noopener"
+                :aria-label="`Ver ${sg.draft.title} en Google Maps`"
+                title="Ver en Google Maps"
+                class="grid h-9 w-9 flex-none place-items-center rounded-full border-[1.5px] border-[#DCE3DF] bg-white hover:border-brand"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A7A55" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" /><circle cx="12" cy="10" r="2.5" /></svg>
+              </a>
+              <span v-if="sg.pinId" title="Guardado" aria-label="Guardado" class="grid h-9 w-9 flex-none place-items-center rounded-full border-[1.5px] border-brand bg-brand-soft">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#075C40" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10" /></svg>
+              </span>
+              <button
+                v-else-if="!simple"
+                :aria-label="`Guardar ${sg.draft.title} en Ideas`"
+                title="Guardar en Ideas"
+                class="grid h-9 w-9 flex-none place-items-center rounded-full bg-brand text-white hover:bg-brand-dark"
+                @click="emit('accept', m, i)"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3z" /></svg>
+              </button>
             </div>
           </div>
-        </div>
+        </template>
       </div>
 
       <template v-if="sending">
         <div class="flex justify-end">
-          <div class="max-w-[85%] rounded-[20px] rounded-tr-md bg-brand/70 px-4 py-3 text-[15px] whitespace-pre-wrap text-white">
-            {{ pendingText }}
-          </div>
+          <div class="max-w-[85%] rounded-[22px] rounded-br-md bg-brand/70 px-4 py-2.5 text-[15px] whitespace-pre-wrap text-white">{{ pendingText }}</div>
         </div>
-        <div class="inline-flex items-center gap-2 rounded-[20px] rounded-tl-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
-          <span class="animate-pulse">●●●</span> {{ busyLabel ?? 'Pensando (puede estar buscando en la web)…' }}
+        <div class="flex items-center gap-2.5">
+          <CopilotAvatar />
+          <span class="inline-flex items-center gap-2 rounded-[22px] rounded-tl-md bg-rocio px-4 py-3 text-sm text-slate-500">
+            <span class="flex gap-1" aria-hidden="true">
+              <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
+              <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:120ms]" />
+              <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:240ms]" />
+            </span>
+            {{ busyLabel ?? 'Pensando…' }}
+          </span>
         </div>
       </template>
     </div>
