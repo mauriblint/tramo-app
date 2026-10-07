@@ -9,6 +9,8 @@ import {
   listPins,
   listStops,
   isOngoing,
+  setDayCity,
+  stopOfDay,
   type Stop,
   type Trip,
 } from '../db.js'
@@ -52,11 +54,10 @@ export function generationStatus(tripId: string): GenerationStatus | null {
 
 export const isGenerating = (tripId: string) => (jobs.get(tripId)?.pendingCities.size ?? 0) > 0
 
-/** Days that belong to a stop: arrival day up to the day before leaving; the last stop keeps its last day. */
+/** Days that belong to a stop: arrival day up to the day before leaving; the trip's last day goes to the stop that reaches it. */
 export function stopDays(trip: Trip, stops: Stop[], stop: Stop): string[] {
-  const isLast = stops.at(-1)?.id === stop.id
   const days = daysBetween(stop.startDate, stop.endDate)
-  const own = isLast ? days : days.slice(0, -1)
+  const own = stop.endDate === trip.endDate ? days : days.slice(0, -1)
   const inTrip = new Set(daysBetween(trip.startDate, trip.endDate))
   return own.filter((d) => inTrip.has(d))
 }
@@ -150,11 +151,20 @@ function stopPrompt(trip: Trip, stops: Stop[], i: number, days: string[]): strin
   const prev = stops[i - 1]
   const next = stops[i + 1]
   const otherTrips = stops.filter((s) => s.id !== stop.id).flatMap((s) => [s.city, ...s.dayTrips])
-  const isFirst = i === 0
-  const isLast = i === stops.length - 1
+  // Only a part of the stop may be planned now (a day-by-day trip): arrival/departure apply when those days are included.
+  const own = stopDays(trip, stops, stop)
+  const isFirst = i === 0 && days[0] === own[0]
+  const arrives = days[0] === own[0]
+  const isLast = stop.endDate === trip.endDate && days.at(-1) === own.at(-1)
+  const leaves = days.at(-1) === own.at(-1)
+  // In a day-by-day trip the stops may have gaps: only talk about the transfer when they're back to back.
+  const fromPrev = prev && prev.endDate === stop.startDate ? prev : null
+  const toNext = next && next.startDate === stop.endDate ? next : null
   const city = stop.city.toLowerCase()
-  const pins = listPins(trip.id).filter((p) => p.city?.toLowerCase().includes(city) && p.status !== 'discarded')
-  const keep = pins.filter((p) => p.day && p.status !== 'idea')
+  const all = listPins(trip.id).filter((p) => p.status !== 'discarded')
+  const pins = all.filter((p) => p.city?.toLowerCase().includes(city))
+  const onDays = all.filter((p) => p.day && days.includes(p.day))
+  const keep = [...onDays, ...pins.filter((p) => p.day && !days.includes(p.day) && p.status !== 'idea')]
   const wanted = pins.filter((p) => !p.day && (p.status === 'want' || p.status === 'must'))
   const ideas = pins.filter((p) => !p.day && p.status === 'idea')
 
@@ -170,14 +180,15 @@ Esta parada: ${stop.city}${stop.lodging ? ` (alojamiento: ${stop.lodging})` : ''
 ${stop.dayTrips.length ? `Excursiones de día desde esta base (incluilas, un día cada una): ${stop.dayTrips.join(', ')}` : 'Sin excursiones de día asignadas: quedate en la ciudad.'}
 ${otherTrips.length ? `NO hagas excursiones a: ${otherTrips.join(', ')} (las cubre otra parada).` : ''}
 Días a planificar (exactamente estos, en orden): ${days.join(', ')}
-${isFirst && isOngoing(trip) ? '- El viaje ya está en curso: el primer día es HOY y ya están en esta ciudad (no hay llegada ni traslado).' : isFirst ? '- El primer día es la LLEGADA del viaje (ver vuelos en la ficha): algo liviano.' : `- El primer día llegan desde ${prev?.city}: incluí el traslado (type "route") a la mañana y algo liviano.`}
-${isLast ? '- El último día es la SALIDA del viaje (ver vuelos en la ficha): planificá según la hora del vuelo, incluí el traslado al aeropuerto.' : `- Al día siguiente del último se van a ${next?.city} (eso lo planifica otra parada).`}
-${keep.length ? `Ya fijado por el usuario (no lo repitas, planificá alrededor):\n${keep.map((p) => `- ${p.day} ${p.timeOfDay ?? ''}: ${p.title}`).join('\n')}` : ''}
+${isFirst && isOngoing(trip) ? '- El viaje ya está en curso: el primer día es HOY y ya están en esta ciudad (no hay llegada ni traslado).' : isFirst ? '- El primer día es la LLEGADA del viaje (ver vuelos en la ficha): algo liviano.' : arrives && fromPrev ? `- El primer día llegan desde ${fromPrev.city}: incluí el traslado (type "route") a la mañana y algo liviano.` : ''}
+${isLast ? '- El último día es la SALIDA del viaje (ver vuelos en la ficha): planificá según la hora del vuelo, incluí el traslado al aeropuerto.' : leaves && toNext ? `- Al día siguiente del último se van a ${toNext.city} (eso lo planifica otra parada).` : ''}
+${trip.datesTentative ? '- Las fechas son provisorias (todavía no hay pasajes): no asumas día de la semana, feriados ni eventos puntuales.' : ''}
+${keep.length ? `Ya está en el plan (no lo repitas; contalo dentro de los ítems del día y planificá alrededor):\n${keep.map((p) => `- ${p.day} ${p.timeOfDay ?? ''}: ${p.title}`).join('\n')}` : ''}
 ${wanted.length ? `El usuario QUIERE hacer esto acá, incluilo:\n${wanted.map((p) => `- ${p.title}`).join('\n')}` : ''}
 ${ideas.length ? `Ideas guardadas por el usuario (usalas si encajan):\n${ideas.map((p) => `- ${p.title}`).join('\n')}` : ''}
 
 Reglas:
-- Ítems por día según el ritmo: tranqui 2, intermedio 3, intenso 3-4. Con chicos: actividades aptas para su edad, pausas y nada de jornadas eternas; agrupá por cercanía geográfica; no repitas lugares entre días.
+- Ítems por día según el ritmo, contando lo que ya está en el plan: tranqui 2, intermedio 3, intenso 3-4. Con chicos: actividades aptas para su edad, pausas y nada de jornadas eternas; agrupá por cercanía geográfica; no repitas lugares entre días.
 - Cada ítem es un lugar/actividad/comida real y concreto con nombre propio (nunca "X o Y" ni "a elección").
 - Escribí en el idioma de la ficha. note: 1-2 frases útiles.`
 }
@@ -266,6 +277,49 @@ export function startGeneration(tripId: string, cities?: string[] | null): Gener
       .finally(() => {
         job.pendingCities.delete(s.id)
         if (job.pendingCities.size === 0) finish(tripId, job, targets.length === stops.length)
+      })
+  }
+  return generationStatus(tripId)!
+}
+
+/**
+ * "Armar este día" / "armame del 3 al 5": generate only these days, around whatever they already have
+ * (nothing is deleted). A day without a stop needs `city`, which becomes (or extends) its stop.
+ */
+export function startDayGeneration(tripId: string, days: string[], city?: string | null): GenerationStatus {
+  if (isGenerating(tripId)) throw new HttpError(409, 'Ya se está armando el itinerario')
+  let trip = getTrip(tripId)
+  if (!trip) throw new HttpError(404, 'Trip no encontrado')
+  const inTrip = new Set(daysBetween(trip.startDate, trip.endDate))
+  const wanted = [...new Set(days)].filter((d) => inTrip.has(d)).sort()
+  if (!wanted.length) throw new HttpError(400, 'Esos días no están en el viaje')
+
+  for (const d of wanted) {
+    if (stopOfDay(trip, listStops(tripId), d)) continue
+    if (!city?.trim()) throw new HttpError(400, '¿En qué ciudad vas a estar ese día?')
+    setDayCity(tripId, d, city)
+  }
+  trip = getTrip(tripId)!
+  const stops = listStops(tripId)
+  const groups = new Map<string, { i: number; days: string[] }>()
+  for (const d of wanted) {
+    const s = stopOfDay(trip, stops, d)!
+    const g = groups.get(s.id) ?? { i: stops.indexOf(s), days: [] }
+    g.days.push(d)
+    groups.set(s.id, g)
+  }
+
+  const job: Job = { totalDays: wanted.length, doneDays: new Set(), pendingCities: new Set(groups.keys()), failedCities: [] }
+  jobs.set(tripId, job)
+  for (const [id, { i, days: ds }] of groups) {
+    generateStop(trip, stops, i, ds, job)
+      .catch((err) => {
+        console.error(`[gen] ${stops[i]!.city} (días) falló`, err)
+        job.failedCities.push(stops[i]!.city)
+      })
+      .finally(() => {
+        job.pendingCities.delete(id)
+        if (job.pendingCities.size === 0) finish(tripId, job, false)
       })
   }
   return generationStatus(tripId)!

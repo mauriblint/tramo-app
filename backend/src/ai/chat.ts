@@ -2,7 +2,7 @@ import OpenAI from 'openai'
 
 import { config } from '../config.js'
 import { HttpError, REASONING, addDays, daysBetween, isDate, openai } from './client.js'
-import { isGenerating, startGeneration } from './generate.js'
+import { isGenerating, startDayGeneration, startGeneration } from './generate.js'
 import { FIRST_QUESTION, nextQuestion, type QuestionOption } from '../onboarding.js'
 import {
   PIN_STATUSES,
@@ -23,6 +23,7 @@ import {
   listPins,
   listStops,
   replaceStops,
+  setTripDates,
   sortDay,
   updatePin,
   updateTrip,
@@ -124,6 +125,10 @@ const tools: OpenAI.Responses.Tool[] = [
         'departureTime',
         'currentCity',
         'brief',
+        'noFixedDates',
+        'lengthDays',
+        'whenHint',
+        'approxStartDate',
       ],
       properties: {
         travelers: { type: ['string', 'null'], enum: [...TRAVELERS, null], description: 'Quiénes viajan' },
@@ -141,11 +146,21 @@ const tools: OpenAI.Responses.Tool[] = [
         arrivalTime: { type: ['string', 'null'], enum: [...TIMES_OF_DAY, null], description: 'Franja de llegada' },
         departureCity: { type: ['string', 'null'], description: 'Ciudad desde donde se vuelve' },
         departureTime: { type: ['string', 'null'], enum: [...TIMES_OF_DAY, null], description: 'Franja de salida' },
-        currentCity: { type: ['string', 'null'], description: 'Ciudad donde está el usuario ahora (si el viaje ya empezó)' },
+        currentCity: {
+          type: ['string', 'null'],
+          description: 'CIUDAD donde está el usuario ahora, si el viaje ya empezó (ej. "Kanazawa"). Nunca el país o la región: "estamos en Japón" no es una ciudad (null).',
+        },
         name: { type: ['string', 'null'], description: 'Nombre corto y lindo, ej. "Japón otoño 2026"' },
         destination: { type: ['string', 'null'], description: 'País/región y ciudades clave' },
         startDate: { ...DATE, description: 'Primer día del viaje (llegada)' },
         endDate: { ...DATE, description: 'Último día del viaje (salida)' },
+        noFixedDates: {
+          type: ['boolean', 'null'],
+          description: 'true SOLO si el usuario dice explícitamente que todavía no tiene fechas fijas o pasajes. Si simplemente no mencionó fechas: null (la app se las pregunta).',
+        },
+        lengthDays: { type: ['integer', 'null'], description: 'Duración aproximada en días si la dice sin fechas ("15 días", "dos semanas" = 14)' },
+        whenHint: { type: ['string', 'null'], description: 'Cuándo, aproximado y tal como lo dijo, si no hay fechas fijas ("julio", "enero 2027", "en primavera")' },
+        approxStartDate: { ...DATE, description: 'Si no hay fechas fijas pero dice el mes: el día 1 de ese mes (el próximo que venga)' },
         brief: {
           type: ['string', 'null'],
           description:
@@ -195,6 +210,22 @@ const tools: OpenAI.Responses.Tool[] = [
       additionalProperties: false,
       required: ['cities'],
       properties: { cities: { type: ['array', 'null'], items: { type: 'string' } } },
+    },
+  },
+  {
+    type: 'function',
+    name: 'plan_days',
+    strict: true,
+    description:
+      'Arma (en segundo plano) SOLO estos días, alrededor de lo que ya tengan (no borra nada). Para días que todavía no tienen ciudad, pasá city: esa ciudad pasa a ser donde duermen esos días.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['days', 'city'],
+      properties: {
+        days: { type: 'array', items: { type: 'string' }, description: 'YYYY-MM-DD dentro del viaje' },
+        city: { type: ['string', 'null'], description: 'Ciudad para los días que no tienen; null si ya la tienen' },
+      },
     },
   },
   {
@@ -398,7 +429,7 @@ function buildContext(trip: Trip): string {
   return `## Estado actual del viaje
 Nombre: ${trip.name}
 Destino: ${trip.destination ?? 'sin definir'}
-Fechas: ${trip.startDate ?? '?'} → ${trip.endDate ?? '?'}${days.length ? ` (${days.length} días, ${days.length - 1} noches)` : ''}
+Fechas: ${trip.startDate ?? '?'} → ${trip.endDate ?? '?'}${days.length ? ` (${days.length} días, ${days.length - 1} noches)` : ''}${trip.datesTentative ? `\nOJO: fechas PROVISORIAS (todavía no tiene pasajes${trip.whenHint ? `; dijo "${trip.whenHint}"` : ''}). Con el usuario hablá de "Día 1, Día 2…", no de fechas ni días de la semana. Cuando tenga fechas reales, update_trip con startDate/endDate: todo el plan se mueve solo.` : ''}
 Hoy: ${new Date().toISOString().slice(0, 10)}
 
 Perfil:
@@ -415,7 +446,7 @@ Paradas:
 ${stopLines}
 
 Itinerario:
-${isGenerating(trip.id) ? '(generándose ahora mismo en segundo plano)\n' : ''}${pins.some((p) => p.day) || isGenerating(trip.id) ? dayBlocks : '(todavía no se generó el día por día)'}
+${isGenerating(trip.id) ? '(generándose ahora mismo en segundo plano)\n' : ''}${pins.some((p) => p.day) || isGenerating(trip.id) || trip.freeform ? dayBlocks : '(todavía no se generó el día por día)'}
 ${orphan.length ? `\nÍtems con fecha fuera del viaje:\n${orphan.map((p) => `${pinLine(p)} [${p.day}]`).join('\n')}\n` : ''}
 Ideas sueltas (sin día):
 ${ideas.length ? ideas.map(pinLine).join('\n') : '(ninguna)'}`
@@ -431,7 +462,7 @@ const COMMON_RULES = `- Respondé en el idioma del usuario, cálido pero conciso
 export type Mode = 'parse' | 'route' | 'planned'
 
 export function modeFor(tripId: string): Mode {
-  if (isPlanned(tripId)) return 'planned'
+  if (isPlanned(tripId) || getTrip(tripId)?.freeform) return 'planned'
   return listStops(tripId).length ? 'route' : 'parse'
 }
 
@@ -446,10 +477,16 @@ function buildInstructions(trip: Trip, mode: Mode): string {
 - Si está explorando o pide recomendaciones ("¿qué hay en Nara?", "ramen en Tokio", "planes si llueve"), usá suggest_pins: cada recomendación se muestra como una tarjeta propia con botón para guardarla. En el texto poné solo una intro breve (1-2 frases) y, si suma, un cierre; no repitas la lista que ya va en las tarjetas.
 - Si dice "guardá/guardame/anotá/pineá esto" (o "eso", "los dos"), guardá lo que se viene hablando con add_pins y day null: queda en sus Ideas. Confirmá en una frase corta.
 - Si dice "agregalo al jueves", add_pins con ese día.
-- Proponé mejoras cuando veas algo útil (día sobrecargado, lluvia, algo que requiere reserva), sin ser pesado.`,
+- Proponé mejoras cuando veas algo útil (día sobrecargado, lluvia, algo que requiere reserva), sin ser pesado.${trip.freeform ? `
+- Este viaje se arma DE A POCO: es normal que haya días vacíos y días sin ciudad. Nunca armes todo el viaje por tu cuenta.
+- "Armame el día 3", "del 5 al 7 en Kioto" → plan_days con esos días (y city si todavía no la tienen). Si no sabés la ciudad, preguntala.
+- Solo si pide una ruta completa: set_stops y, cuando la confirme, generate_itinerary.
+- Si para armar días te faltan quiénes viajan, ritmo o intereses, preguntalo en una línea (y guardalo con update_trip), pero no frenes: con lo que haya alcanza.` : ''}`,
     parse: `Estás arrancando un viaje con el usuario. La app le hace las preguntas; vos solo interpretás lo que escribe.
 - Extraé TODO dato del mensaje (destino, fechas, ciudad de llegada y de regreso con su franja horaria, ciudad actual si el viaje ya empezó, quiénes viajan, edades de chicos, ritmo, intereses) y guardalo con update_trip (también brief = ficha en markdown con lo que dijo). Poné un name lindo apenas sepas destino.
 - Fechas: SIEMPRE completá startDate y endDate (YYYY-MM-DD) si el usuario da días y meses. "10/11" = día/mes. Sin año: elegí el año que deja el viaje más cerca de hoy (puede estar en curso: si hoy cae entre las fechas, es este año). No pidas confirmación.
+- Si DICE que no tiene fechas fijas ("todavía no tengo fechas", "no compré pasajes", "en julio pero no sé qué días"): noFixedDates true, lengthDays si dice cuánto, whenHint con el cuándo aproximado y approxStartDate si nombra el mes. No inventes startDate/endDate. Si solo no las nombró ("15 días por Europa"), guardá lengthDays y dejá noFixedDates en null: la app pregunta las fechas.
+- Si dice que prefiere armarlo solo / de a poco / día por día, también vale noFixedDates solo si no tiene fechas; si las tiene, guardalas igual.
 - "Vuelvo desde X" = departureCity X. "Llego a X" = arrivalCity X. Si dice que no sabe, usá "${UNKNOWN}".
 - Después devolvé el JSON: reaction = UNA frase corta y cálida (máx. 12 palabras) que reaccione a lo que contó, sin preguntas y sin mencionar que guardaste nada (ej.: "¡Japón en otoño, qué buen plan!"); reply = si el usuario hizo una pregunta, la respuesta en 1-2 líneas, si no null. La app agrega la próxima pregunta.`,
     route: `Estás proponiendo y ajustando la RUTA del viaje (ciudades base y noches) antes de armar el día por día.
@@ -509,8 +546,24 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
       if (TIMES_OF_DAY.includes(args.arrivalTime)) patch.arrivalTime = args.arrivalTime
       if (args.departureCity) patch.departureCity = String(args.departureCity).trim()
       if (TIMES_OF_DAY.includes(args.departureTime)) patch.departureTime = args.departureTime
-      if (args.currentCity) patch.currentCity = String(args.currentCity).trim()
+      // "Estamos en Japón" is the destination, not where they are today: the app still asks for the city.
+      const dest = (patch.destination ?? ctx.trip.destination ?? '').toLowerCase()
+      if (args.currentCity && !dest.startsWith(String(args.currentCity).trim().toLowerCase())) patch.currentCity = String(args.currentCity).trim()
+      if (Number.isInteger(args.lengthDays) && args.lengthDays > 0) patch.lengthDays = Math.min(120, args.lengthDays)
+      if (args.whenHint) patch.whenHint = String(args.whenHint).trim()
+      if (args.noFixedDates === true && !patch.startDate && !ctx.trip.startDate) Object.assign(patch, { freeform: true, datesTentative: true })
+
+      // A day-by-day trip (or one with placeholder dates) keeps its plan when the dates change: it moves along.
+      const start = patch.startDate ?? ctx.trip.startDate
+      const end = patch.endDate ?? ctx.trip.endDate
+      if ((patch.startDate || patch.endDate) && start && end && ctx.trip.startDate && (ctx.trip.freeform || ctx.trip.datesTentative)) {
+        const { startDate: _s, endDate: _e, ...rest } = patch
+        const moved = setTripDates(tripId, start, end, { datesTentative: false, ...rest })
+        ctx.trip = getTrip(tripId) ?? ctx.trip
+        return { ok: true, ...moved }
+      }
       ctx.trip = updateTrip(tripId, patch) ?? ctx.trip
+      ctx.trip = ensureTentativeDates(ctx.trip, isDate(args.approxStartDate) ? args.approxStartDate : null)
       // New dates: keep the route's nights and re-lay it from the new start.
       const stops = listStops(tripId)
       if ((patch.startDate || patch.endDate) && stops.length) {
@@ -558,6 +611,10 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
         stops: stops.map((x) => `${x.city} ${nightsOf(x)}n`),
         todo: 'Hecho y aplicado. No llames set_stops. Confirmá en una frase corta y preguntá si arrancamos con el día por día.',
       }
+    }
+    case 'plan_days': {
+      const st = startDayGeneration(tripId, Array.isArray(args.days) ? args.days : [], args.city)
+      return { ok: true, started: true, days: st.totalDays }
     }
     case 'generate_itinerary': {
       const st = startGeneration(tripId, args.cities)
@@ -672,7 +729,8 @@ const toolsFor = (mode: Mode) =>
 export async function chat(tripId: string, text: string, opts: ChatOptions = {}): Promise<ChatResult> {
   let trip = getTrip(tripId)
   if (!trip) throw new HttpError(404, 'Trip no encontrado')
-  if (opts.patch && Object.keys(opts.patch).length) trip = updateTrip(tripId, opts.patch) ?? trip
+  const wasFreeform = trip.freeform
+  if (opts.patch && Object.keys(opts.patch).length) trip = ensureTentativeDates(updateTrip(tripId, opts.patch) ?? trip, null)
 
   const history = listMessages(tripId, HISTORY_LIMIT)
   const userInput = { role: 'user', content: text } as const
@@ -726,7 +784,11 @@ export async function chat(tripId: string, text: string, opts: ChatOptions = {})
   let content: string
   const mode = modeFor(tripId)
 
-  if (mode === 'parse') {
+  if (opts.structured && !wasFreeform && ctx.trip.freeform) {
+    // A quick reply just switched to day by day: say so (or ask what's still needed), no model call.
+    const q = nextQuestion(ctx.trip)
+    content = q ? q.text : freeformReady(ctx.trip)
+  } else if (mode === 'parse') {
     // Onboarding: the model only interprets free text; the script asks the questions.
     const reaction = opts.structured ? '' : await turn('parse', [...historyInput, userInput])
     const q = nextQuestion(ctx.trip)
@@ -735,6 +797,9 @@ export async function chat(tripId: string, text: string, opts: ChatOptions = {})
       const last = [...history].reverse().find((m) => m.role === 'assistant')?.content ?? ''
       const qText = last.trim().endsWith(q.text) && q.retryText ? q.retryText : q.text
       content = [reaction, qText].filter(Boolean).join('\n\n')
+    } else if (ctx.trip.freeform) {
+      // Day by day: no route proposal, straight to the (empty) itinerary.
+      content = [reaction, freeformReady(ctx.trip)].filter(Boolean).join('\n\n')
     } else {
       // Everything we need: propose the route right away.
       content = await turn('route', [
@@ -753,6 +818,22 @@ export async function chat(tripId: string, text: string, opts: ChatOptions = {})
   const userMessage = createMessage(tripId, 'user', text)
   const assistantMessage = createMessage(tripId, 'assistant', content || 'Listo.', ctx.suggestions)
   return { userMessage, assistantMessage, changedPinIds: [...ctx.changed] }
+}
+
+const isoIn = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
+
+/** Placeholder dates for a trip without tickets: from the month they named (or a month from now), as long as they said. */
+function ensureTentativeDates(trip: Trip, approxStart: string | null): Trip {
+  if (!trip.datesTentative || trip.startDate || !trip.lengthDays) return trip
+  const start = approxStart && approxStart > isoIn(0) ? approxStart : isoIn(30)
+  const end = addDays(start, trip.lengthDays - 1)
+  return updateTrip(trip.id, { startDate: start, endDate: end }) ?? trip
+}
+
+function freeformReady(trip: Trip): string {
+  const n = tripDays(trip).length
+  const when = trip.datesTentative ? `${n} días, con fechas a confirmar` : `${n} días`
+  return `Listo, tu viaje quedó en blanco (${when}). Lo vamos armando de a poco: entrá a un día y tocá **Armar este día**, cargá tus reservas, o pedime ideas y una ruta cuando quieras.${trip.datesTentative ? ' Cuando tengas los pasajes, poné las fechas y todo se acomoda solo.' : ''}`
 }
 
 export { nextQuestion }

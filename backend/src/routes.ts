@@ -2,7 +2,7 @@ import { Router, type Request } from 'express'
 
 import { GREETING, HttpError, chat, cleanDraft, extractPins, modeFor, nextQuestion } from './ai/chat.js'
 import * as repo from './db.js'
-import { generationStatus, startGeneration } from './ai/generate.js'
+import { generationStatus, startDayGeneration, startGeneration } from './ai/generate.js'
 import { requireUser } from './auth.js'
 import * as bookings from './bookings.js'
 import { parseBookings } from './ai/bookings.js'
@@ -55,11 +55,17 @@ const tripFields = (b: any): Partial<repo.Trip> => {
     'departureCity',
     'departureTime',
     'currentCity',
+    'whenHint',
   ] as const) {
     if (k in b) out[k] = b[k] === '' ? null : b[k]
   }
+  if ('freeform' in b) out.freeform = !!b.freeform
+  if ('datesTentative' in b) out.datesTentative = !!b.datesTentative
+  if ('lengthDays' in b) out.lengthDays = Number.isFinite(Number(b.lengthDays)) && Number(b.lengthDays) > 0 ? Math.round(Number(b.lengthDays)) : null
   return out
 }
+
+const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
 
 // ---- trips
 
@@ -87,9 +93,28 @@ router.get('/trips/:tripId', (req, res) => {
   })
 })
 
+/** New dates move the whole plan along (see setTripDates); setting them by hand makes them real. */
 router.patch('/trips/:tripId', (req, res) => {
   const trip = tripOr404(req)
-  res.json(repo.updateTrip(trip.id, tripFields(req.body)))
+  const fields = tripFields(req.body)
+  const start = fields.startDate ?? trip.startDate
+  const end = fields.endDate ?? trip.endDate
+  if ((fields.startDate || fields.endDate) && isDay(start) && isDay(end)) {
+    if (end < start) throw new HttpError(400, 'La vuelta es antes de la ida')
+    const { startDate: _s, endDate: _e, ...rest } = fields
+    const moved = repo.setTripDates(trip.id, start, end, { ...rest, datesTentative: false })
+    res.json({ ...repo.getTrip(trip.id), ...moved })
+    return
+  }
+  res.json(repo.updateTrip(trip.id, fields))
+})
+
+/** "Armar este día": only these days, around what they already have; `city` for a day that has no stop yet. */
+router.post('/trips/:tripId/days/generate', (req, res) => {
+  const trip = tripOr404(req)
+  const days = Array.isArray(req.body?.days) ? req.body.days.filter(isDay) : []
+  const city = typeof req.body?.city === 'string' ? req.body.city : null
+  res.status(202).json({ generation: startDayGeneration(trip.id, days, city), stops: repo.listStops(trip.id) })
 })
 
 router.delete('/trips/:tripId', (req, res) => {

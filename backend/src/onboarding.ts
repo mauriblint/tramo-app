@@ -12,7 +12,7 @@ export interface QuestionOption {
 }
 
 export interface Question {
-  id: 'where' | 'now' | 'flights' | 'travelers' | 'kids' | 'pace' | 'interests'
+  id: 'where' | 'length' | 'now' | 'flights' | 'travelers' | 'kids' | 'pace' | 'interests'
   text: string
   /** Asked instead when the same question comes up twice in a row. */
   retryText?: string
@@ -36,7 +36,26 @@ export const INTERESTS = [
   'Planes con chicos',
 ]
 
+/** Quick reply on the first questions: skip the guided route and build the trip day by day. */
+const DAY_BY_DAY: QuestionOption = { label: 'Lo armo día por día', patch: { freeform: true } }
+
 export function nextQuestion(t: Trip): Question | null {
+  // No tickets yet: placeholder dates need at least a rough length.
+  if (t.datesTentative && !t.startDate) {
+    return {
+      id: 'length',
+      text: 'Sin problema, lo armamos igual. ¿Cuántos días, más o menos?',
+      retryText: 'Decime cuántos días, más o menos: "unos 10", "dos semanas"…',
+      kind: 'single',
+      options: [
+        { label: 'Una semana', patch: { lengthDays: 7 } },
+        { label: '10 días', patch: { lengthDays: 10 } },
+        { label: 'Dos semanas', patch: { lengthDays: 14 } },
+        { label: 'Tres semanas', patch: { lengthDays: 21 } },
+        { label: 'Un mes', patch: { lengthDays: 30 } },
+      ],
+    }
+  }
   if (!t.destination || !t.startDate || !t.endDate) {
     return {
       id: 'where',
@@ -45,8 +64,15 @@ export function nextQuestion(t: Trip): Question | null {
         ? 'No me quedaron claras las fechas. ¿Me las pasás con día y mes? Por ejemplo: del 30/9 al 4/11.'
         : 'Contame destino y fechas, por ejemplo: "Japón del 10 al 24 de noviembre".',
       kind: 'free',
-      options: t.destination ? [{ label: 'Todavía no tengo fechas fijas' }] : [{ label: 'No sé a dónde, sorprendeme' }],
+      options: t.destination
+        ? [{ label: 'Todavía no tengo fechas fijas', patch: { freeform: true, datesTentative: true } }]
+        : [{ label: 'No sé a dónde, sorprendeme' }],
     }
+  }
+  // Day by day: nothing else is required up front (the copilot asks the profile when it's useful).
+  if (t.freeform) {
+    if (isOngoing(t) && !t.currentCity) return { id: 'now', text: 'Veo que el viaje ya arrancó. ¿En qué ciudad estás ahora?', kind: 'free', options: [] }
+    return null
   }
   if (isOngoing(t) && !t.currentCity) {
     return {
@@ -63,7 +89,7 @@ export function nextQuestion(t: Trip): Question | null {
       text: isOngoing(t) || t.arrivalCity ? '¿Desde qué ciudad vuelven?' : '¿Por qué ciudad llegan y desde cuál vuelven?',
       retryText: 'Decime las ciudades de los vuelos, por ejemplo: "llegamos a Roma y volvemos desde Milán".',
       kind: 'free',
-      options: [{ label: 'Todavía no sé', patch: { arrivalCity: t.arrivalCity ?? UNKNOWN, departureCity: UNKNOWN } }],
+      options: [{ label: 'Todavía no sé', patch: { arrivalCity: t.arrivalCity ?? UNKNOWN, departureCity: UNKNOWN } }, DAY_BY_DAY],
     }
   }
   if (!t.travelers) {

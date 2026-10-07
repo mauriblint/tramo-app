@@ -41,6 +41,14 @@ export interface Trip {
   departureTime: TimeOfDay | null
   /** Where they are now, when the trip already started. */
   currentCity: string | null
+  /** Built day by day by the user (empty days are fine), instead of the guided route + full generation. */
+  freeform: boolean
+  /** The dates are placeholders (no tickets yet): the UI shows "Día 1, Día 2…" and they move when set for real. */
+  datesTentative: boolean
+  /** Rough length when there are no dates yet ("unos 15 días"). */
+  lengthDays: number | null
+  /** Rough "when" as the user said it ("julio", "enero 2027"), shown while the dates are tentative. */
+  whenHint: string | null
   userId: string | null
   createdAt: string
   updatedAt: string
@@ -191,6 +199,10 @@ for (const [col, def] of [
   ['departure_city', 'TEXT'],
   ['departure_time', 'TEXT'],
   ['current_city', 'TEXT'],
+  ['freeform', 'INTEGER NOT NULL DEFAULT 0'],
+  ['dates_tentative', 'INTEGER NOT NULL DEFAULT 0'],
+  ['length_days', 'INTEGER'],
+  ['when_hint', 'TEXT'],
 ] as const) {
   if (!tripCols.has(col)) db.exec(`ALTER TABLE trips ADD COLUMN ${col} ${def}`)
 }
@@ -225,6 +237,10 @@ const toTrip = (r: Row): Trip => ({
   departureCity: r.departure_city,
   departureTime: r.departure_time,
   currentCity: r.current_city,
+  freeform: !!r.freeform,
+  datesTentative: !!r.dates_tentative,
+  lengthDays: r.length_days ?? null,
+  whenHint: r.when_hint ?? null,
   userId: r.user_id ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -289,7 +305,8 @@ export function updateTrip(id: string, input: Partial<Trip>): Trip | null {
   const next = { ...cur, ...input }
   db.prepare(
     `UPDATE trips SET name = ?, destination = ?, start_date = ?, end_date = ?, notes = ?, travelers = ?, kids = ?, pace = ?,
-       interests = ?, arrival_city = ?, arrival_time = ?, departure_city = ?, departure_time = ?, current_city = ?, updated_at = ?
+       interests = ?, arrival_city = ?, arrival_time = ?, departure_city = ?, departure_time = ?, current_city = ?,
+       freeform = ?, dates_tentative = ?, length_days = ?, when_hint = ?, updated_at = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -306,10 +323,46 @@ export function updateTrip(id: string, input: Partial<Trip>): Trip | null {
     next.departureCity,
     next.departureTime,
     next.currentCity,
+    next.freeform ? 1 : 0,
+    next.datesTentative ? 1 : 0,
+    next.lengthDays ?? null,
+    next.whenHint ?? null,
     now(),
     id,
   )
   return getTrip(id)
+}
+
+const shiftDate = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+const daysFrom = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
+
+/**
+ * New dates without losing anything: a new start moves the whole plan (activities and stops) by the same
+ * number of days; whatever then falls after the new end goes back to Ideas, and stops are cut to fit.
+ * Bookings are real dates and stay where they are.
+ */
+export function setTripDates(id: string, startDate: string, endDate: string, extra: Partial<Trip> = {}): { moved: number; toIdeas: number } {
+  const cur = getTrip(id)
+  if (!cur) return { moved: 0, toIdeas: 0 }
+  const moved = cur.startDate ? daysFrom(cur.startDate, startDate) : 0
+  let toIdeas = 0
+  db.transaction(() => {
+    if (moved) {
+      for (const p of db.prepare('SELECT id, day FROM pins WHERE trip_id = ? AND day IS NOT NULL').all(id) as { id: string; day: string }[])
+        db.prepare('UPDATE pins SET day = ? WHERE id = ?').run(shiftDate(p.day, moved), p.id)
+      for (const s of db.prepare('SELECT id, start_date, end_date FROM stops WHERE trip_id = ?').all(id) as Row[])
+        db.prepare('UPDATE stops SET start_date = ?, end_date = ? WHERE id = ?').run(
+          s.start_date && shiftDate(s.start_date, moved),
+          s.end_date && shiftDate(s.end_date, moved),
+          s.id,
+        )
+    }
+    toIdeas = db.prepare('UPDATE pins SET day = NULL, time_of_day = NULL WHERE trip_id = ? AND day IS NOT NULL AND (day > ? OR day < ?)').run(id, endDate, startDate).changes
+    db.prepare('DELETE FROM stops WHERE trip_id = ? AND start_date > ?').run(id, endDate)
+    db.prepare('UPDATE stops SET end_date = ? WHERE trip_id = ? AND end_date > ?').run(endDate, id, endDate)
+    updateTrip(id, { ...extra, startDate, endDate })
+  })()
+  return { moved, toIdeas }
 }
 
 export function deleteTrip(id: string): void {
@@ -445,6 +498,47 @@ export function replaceStops(tripId: string, stops: StopDraft[]): Stop[] {
   })()
   touchTrip(tripId)
   return listStops(tripId)
+}
+
+/**
+ * "Where are you this day": stops in a day-by-day trip are built from this. The same city as the night
+ * before (or after) extends that stop; otherwise it's a new one-night stop. Only for days without a stop.
+ */
+export function setDayCity(tripId: string, day: string, city: string): Stop[] {
+  const name = city.trim()
+  const same = (s: Stop) => s.city.trim().toLowerCase() === name.toLowerCase()
+  const stops = listStops(tripId)
+  const before = stops.find((s) => s.endDate === day && same(s))
+  const after = stops.find((s) => s.startDate === shiftDate(day, 1) && same(s))
+  if (before && after) {
+    // Fills the gap between two stays in the same city: they become one.
+    db.prepare('UPDATE stops SET end_date = ? WHERE id = ?').run(after.endDate, before.id)
+    db.prepare('DELETE FROM stops WHERE id = ?').run(after.id)
+  } else if (before) {
+    db.prepare('UPDATE stops SET end_date = ? WHERE id = ?').run(shiftDate(day, 1), before.id)
+  } else if (after) {
+    db.prepare('UPDATE stops SET start_date = ? WHERE id = ?').run(day, after.id)
+  } else {
+    db.prepare('INSERT INTO stops (id, trip_id, city, start_date, end_date, lodging, day_trips, position) VALUES (?, ?, ?, ?, ?, NULL, ?, 0)').run(
+      randomUUID(),
+      tripId,
+      name,
+      day,
+      shiftDate(day, 1),
+      '[]',
+    )
+  }
+  // Keep them in date order.
+  const sorted = listStops(tripId).sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))
+  const pos = db.prepare('UPDATE stops SET position = ? WHERE id = ?')
+  sorted.forEach((s, i) => pos.run(i, s.id))
+  touchTrip(tripId)
+  return listStops(tripId)
+}
+
+/** The stop a day belongs to: from arrival up to the day before leaving; the trip's last day belongs to the stop that reaches it. */
+export function stopOfDay(trip: Trip, stops: Stop[], day: string): Stop | null {
+  return stops.find((s) => s.startDate && s.endDate && day >= s.startDate && (day < s.endDate || (day === s.endDate && s.endDate === trip.endDate))) ?? null
 }
 
 export function deletePin(id: string): void {
