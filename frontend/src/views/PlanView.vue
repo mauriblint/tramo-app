@@ -145,7 +145,8 @@ function onKey(e: KeyboardEvent) {
           <circle cx="400" cy="28" r="14" fill="#F5C84C" fill-opacity="0.3" />
           <circle cx="400" cy="28" r="7" fill="#F5C84C" />
         </svg>
-        <div v-if="hasTrips">
+        <!-- Starting a new one: back to the invitation -->
+        <div v-if="hasTrips && !composing">
           <h1 class="font-display text-[40px] leading-[1.02] font-bold md:text-[64px]">Hola{{ auth.user ? `, ${auth.user.name.split(' ')[0]}` : '' }}</h1>
           <p class="mt-3 max-w-md text-[15px] text-mint-text md:text-lg">Seguí armando tus viajes o empezá uno nuevo.</p>
         </div>
