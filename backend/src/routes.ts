@@ -6,6 +6,7 @@ import { generationStatus, startGeneration } from './ai/generate.js'
 import { requireUser } from './auth.js'
 import * as bookings from './bookings.js'
 import { parseBookings } from './ai/bookings.js'
+import { dismissInbound, importInbound, listInbox } from './inbound.js'
 import { geocode, locatePin } from './geo.js'
 import { getWeather } from './weather.js'
 
@@ -124,6 +125,23 @@ router.patch('/trips/:tripId/bookings/:bookingId', (req, res) => {
 router.delete('/trips/:tripId/bookings/:bookingId', (req, res) => {
   tripOr404(req)
   bookings.deleteBooking(bookingOr404(req).id)
+  res.status(204).end()
+})
+
+// ---- forwarded emails waiting for the user to pick the trip (account-wide)
+
+router.get('/inbox', (req, res) => {
+  res.json(listInbox(req.user!.id))
+})
+
+router.post('/inbox/:inboundId/import', (req, res) => {
+  const created = importInbound(req.user!.id, String(req.params.inboundId), String(req.body?.tripId ?? ''), req.body?.bookings)
+  if (!created) throw new HttpError(404, 'Email o viaje no encontrado')
+  res.json(created)
+})
+
+router.delete('/inbox/:inboundId', (req, res) => {
+  if (!dismissInbound(req.user!.id, String(req.params.inboundId))) throw new HttpError(404, 'Email no encontrado')
   res.status(204).end()
 })
 

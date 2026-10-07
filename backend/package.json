@@ -12,11 +12,15 @@
     "better-sqlite3": "^13.0.3",
     "dotenv": "^18.0.4",
     "express": "^5.2.1",
+    "html-to-text": "^10.0.1",
+    "mailparser": "^3.9.36",
     "openai": "^7.25.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
+    "@types/html-to-text": "^9.0.4",
+    "@types/mailparser": "^3.9.0",
     "@types/node": "^26.6.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"

@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto'
+
 import express, { type ErrorRequestHandler } from 'express'
 
 import { config } from './config.js'
@@ -12,6 +14,7 @@ import {
   userFromRequest,
   verifyLogin,
 } from './auth.js'
+import { receiveEmail } from './inbound.js'
 import { router } from './routes.js'
 
 const app = express()
@@ -37,12 +40,33 @@ app.get('/api/auth/me', (req, res) => {
     res.status(401).json({ error: 'Sin sesión' })
     return
   }
-  res.json({ user })
+  res.json({ user, inboundAddress: config.inboundAddress ?? null })
 })
 app.post('/api/auth/logout', (req, res) => {
   logout(sessionTokenOf(req))
   clearSessionCookie(res)
   res.status(204).end()
+})
+
+// ---- forwarded booking emails (from the Cloudflare Email Worker, authenticated by a shared secret)
+const sameSecret = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b))
+app.post('/api/inbound/email', express.raw({ type: () => true, limit: '25mb' }), async (req, res) => {
+  if (!config.inboundSecret) {
+    res.status(503).json({ error: 'Inbound off' })
+    return
+  }
+  if (!sameSecret(String(req.get('x-inbound-secret') ?? ''), config.inboundSecret)) {
+    res.status(401).json({ error: 'Bad secret' })
+    return
+  }
+  if (!Buffer.isBuffer(req.body) || !req.body.length) {
+    res.status(400).json({ error: 'Empty email' })
+    return
+  }
+  const result = await receiveEmail(req.body, req.get('x-envelope-from') ?? undefined)
+  console.log('[inbound]', req.get('x-envelope-from'), '→', result)
+  // 202 either way: an unknown sender is dropped quietly instead of bounced (no confirmation that the address exists).
+  res.status(202).json(result)
 })
 
 // ---- app (signed in)
