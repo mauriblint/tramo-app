@@ -13,6 +13,8 @@ type Step = 'form' | 'sent'
 export const auth = reactive({
   user: null as User | null,
   checked: false,
+  /** Where booking emails can be forwarded (null while the feature is off). */
+  inboundAddress: null as string | null,
   modal: { open: false, mode: 'signup' as Mode, step: 'form' as Step, email: '', name: '' },
   /** Runs after a successful sign-in (e.g. start the trip that was typed before signing up). */
   onSignedIn: null as null | ((u: User) => void),
@@ -34,7 +36,9 @@ async function call<T>(method: string, url: string, body?: unknown): Promise<T> 
 
 export async function fetchMe(): Promise<User | null> {
   try {
-    auth.user = (await call<{ user: User }>('GET', '/me')).user
+    const me = await call<{ user: User; inboundAddress: string | null }>('GET', '/me')
+    auth.user = me.user
+    auth.inboundAddress = me.inboundAddress
   } catch {
     auth.user = null
   }

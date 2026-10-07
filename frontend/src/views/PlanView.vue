@@ -9,6 +9,8 @@ import { fmtDay } from '@/pinMeta'
 
 const router = useRouter()
 const trips = ref<Trip[]>([])
+/** Forwarded emails still waiting for the user to pick their trip. */
+const toReview = ref(0)
 /** Avoid flashing the empty-state composer before the list arrives. */
 const loaded = ref(false)
 /** With trips, the composer stays folded until "Nuevo viaje". */
@@ -33,6 +35,7 @@ async function loadTrips() {
   try {
     // Drafts abandoned before saying where they're going are just noise.
     trips.value = (await api.listTrips()).filter((t) => t.destination)
+    api.inbox().then((l) => (toReview.value = l.length), () => {})
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -182,6 +185,14 @@ function onKey(e: KeyboardEvent) {
         </div>
 
         <p v-if="error" class="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{{ error }}</p>
+
+        <RouterLink v-if="toReview" to="/reservas" class="flex items-center gap-3 rounded-[18px] bg-sun-soft px-4 py-3 text-[#6B4E00] hover:bg-sun/40">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-none" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
+          <span class="min-w-0 flex-1 text-[14px] font-extrabold">
+            {{ toReview === 1 ? 'Tenés 1 email con reservas por revisar' : `Tenés ${toReview} emails con reservas por revisar` }}
+          </span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="flex-none" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+        </RouterLink>
 
         <RouterLink
           v-for="t in sortedTrips"

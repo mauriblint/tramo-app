@@ -76,6 +76,19 @@ export interface Booking extends BookingInput {
   updatedAt: string
 }
 
+/** A forwarded email whose bookings wait for the user to pick the trip. */
+export interface InboxItem {
+  id: string
+  sender: string
+  subject: string | null
+  bookings: BookingInput[]
+  skipped: number
+  error: string | null
+  /** The trip whose dates fit, when there's exactly one. */
+  tripId: string | null
+  receivedAt: string
+}
+
 export interface QuestionOption {
   label: string
   patch?: Partial<Trip>
@@ -174,6 +187,10 @@ export const api = {
   parseBookings: (tripId: string, text: string) =>
     req<{ bookings: BookingInput[]; skipped: number; problems: string[] }>('POST', `/trips/${tripId}/bookings/parse`, { text }),
   deleteBooking: (tripId: string, id: string) => req<void>('DELETE', `/trips/${tripId}/bookings/${id}`),
+
+  inbox: () => req<InboxItem[]>('GET', '/inbox'),
+  importInbox: (id: string, tripId: string, bookings: BookingInput[]) => req<Booking[]>('POST', `/inbox/${id}/import`, { tripId, bookings }),
+  dismissInbox: (id: string) => req<void>('DELETE', `/inbox/${id}`),
 
   createPin: (tripId: string, p: Partial<PinDraft>) => req<Pin>('POST', `/trips/${tripId}/pins`, p),
   updatePin: (tripId: string, id: string, p: Partial<PinDraft>) => req<Pin>('PATCH', `/trips/${tripId}/pins/${id}`, p),
