@@ -52,9 +52,13 @@ const pinDraftSchema = {
       type: 'string',
       enum: [...PIN_TYPES],
       description:
-        'place = lugar a visitar; food = restaurante/comida/bar; activity = experiencia (onsen, clase, show); route = recorrido o traslado (ej. tren Tokio→Kioto); idea = tip/pendiente logístico; summary = resumen',
+        'place = lugar a visitar; food = restaurante/comida/bar; activity = experiencia (onsen, clase, show); route = recorrido o traslado (ej. tren Tokio→Kioto); idea = tip, pendiente o plan sin un lugar concreto con nombre propio (ej. "comprar la Suica", "karaoke en cabina", "ir temprano"); summary = resumen. Si no podés nombrar un lugar puntual que exista en un mapa, usá idea.',
     },
-    title: { type: 'string', description: 'Corto y concreto, ej. "Fushimi Inari al amanecer"' },
+    title: {
+      type: 'string',
+      description:
+        'Para lugares: solo el nombre tal como figura en un mapa (ej. "Fushimi Inari Taisha", "Fuunji"); los detalles van en body. Para ideas: corto y concreto (ej. "Comprar la Suica en el aeropuerto").',
+    },
     body: {
       type: 'string',
       description: 'Markdown breve y autocontenido: qué es, por qué, tips, horario, precio aprox., cómo llegar.',
@@ -439,7 +443,9 @@ function buildInstructions(trip: Trip, mode: Mode): string {
 - Si el usuario pide un cambio concreto, hacelo directamente con las tools (update_pins, add_pins, remove_pins) y confirmá breve.
 - Si cambia la ruta (noches, sumar/sacar ciudad): set_stops y después generate_itinerary solo para las ciudades afectadas.
 - "Rehacé los días de X" → generate_itinerary con cities [X].
-- Si está explorando ("¿qué hay en Nara?"), respondé y usá suggest_pins para que elija; si dice "agregalo al jueves", add_pins con ese día.
+- Si está explorando o pide recomendaciones ("¿qué hay en Nara?", "ramen en Tokio", "planes si llueve"), usá suggest_pins: cada recomendación se muestra como una tarjeta propia con botón para guardarla. En el texto poné solo una intro breve (1-2 frases) y, si suma, un cierre; no repitas la lista que ya va en las tarjetas.
+- Si dice "guardá/guardame/anotá/pineá esto" (o "eso", "los dos"), guardá lo que se viene hablando con add_pins y day null: queda en sus Ideas. Confirmá en una frase corta.
+- Si dice "agregalo al jueves", add_pins con ese día.
 - Proponé mejoras cuando veas algo útil (día sobrecargado, lluvia, algo que requiere reserva), sin ser pesado.`,
     parse: `Estás arrancando un viaje con el usuario. La app le hace las preguntas; vos solo interpretás lo que escribe.
 - Extraé TODO dato del mensaje (destino, fechas, ciudad de llegada y de regreso con su franja horaria, ciudad actual si el viaje ya empezó, quiénes viajan, edades de chicos, ritmo, intereses) y guardalo con update_trip (también brief = ficha en markdown con lo que dijo). Poné un name lindo apenas sepas destino.
