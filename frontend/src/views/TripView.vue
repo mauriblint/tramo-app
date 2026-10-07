@@ -2,14 +2,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { api, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
+import { api, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type TimeOfDay, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
 import BookingForm from '@/components/BookingForm.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CopilotDock from '@/components/CopilotDock.vue'
 import HotelList from '@/components/HotelList.vue'
+import IdeasBoard from '@/components/IdeasBoard.vue'
 import PasteBookings from '@/components/PasteBookings.vue'
 import TransportList from '@/components/TransportList.vue'
-import PinBoard from '@/components/PinBoard.vue'
 import PinEditor from '@/components/PinEditor.vue'
 import RouteCard from '@/components/RouteCard.vue'
 import TripBrief from '@/components/TripBrief.vue'
@@ -322,6 +322,19 @@ async function deleteBooking() {
   bookingForm.value = null
 }
 
+/** From the Ideas tab: ask the copilot (it opens so you see the answer arrive). */
+function askCopilot(text: string) {
+  dock.value?.open('half')
+  send(text)
+}
+
+async function schedulePin(p: Pin, day: string, timeOfDay: TimeOfDay) {
+  const res = await run(() => api.updatePin(props.id, p.id, { day, timeOfDay }))
+  if (!res) return
+  Object.assign(p, res)
+  flash([p.id])
+}
+
 async function movePin(p: Pin, day: string | null) {
   const res = await run(() => api.updatePin(props.id, p.id, { day }))
   if (res) Object.assign(p, res)
@@ -509,18 +522,14 @@ const editorTitle = computed(() =>
               <ItineraryList :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
 
-            <div v-else-if="tab === 'ideas'" class="-mx-4 md:mx-0 md:overflow-hidden md:rounded-[22px] md:bg-rocio">
-              <PinBoard
-                :pins="ideas"
-                :highlight-ids="highlightIds"
-                :trip-start="trip.startDate"
-                :trip-end="trip.endDate"
-                @add="openNew(null)"
-                @edit="(p) => router.push(`/trips/${trip!.id}/pins/${p.id}`)"
-                @status="setStatus"
-                @located="(p, np) => Object.assign(p, np)"
-              />
-            </div>
+            <IdeasBoard
+              v-else-if="tab === 'ideas'"
+              :trip="trip"
+              :pins="pins"
+              @ask="askCopilot"
+              @add="openNew(null)"
+              @schedule="schedulePin"
+            />
 
             <template v-else>
               <div class="grid grid-cols-2 gap-2 md:hidden">
