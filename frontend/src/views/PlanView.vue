@@ -120,7 +120,7 @@ function onKey(e: KeyboardEvent) {
     <!-- Brand panel: stays put on desktop while the right side scrolls -->
     <section
       class="flex flex-col rounded-b-[32px] bg-brand px-6 pt-5 text-white md:sticky md:top-4 md:h-[calc(100dvh-2rem)] md:flex-1 md:justify-between md:overflow-hidden md:rounded-[28px] md:px-10 md:py-8"
-      :class="hasTrips ? 'gap-4 pb-6 md:gap-7' : 'gap-7 pb-8'"
+      :class="hasTrips && !composing ? 'gap-4 pb-6 md:gap-7' : 'gap-7 pb-8'"
     >
       <div class="flex h-11 items-center justify-between">
         <TramoLogo :size="30" on-dark />
@@ -131,7 +131,7 @@ function onKey(e: KeyboardEvent) {
       </div>
 
       <div class="flex flex-col gap-6">
-        <svg viewBox="0 0 420 110" class="w-full max-w-[420px]" :class="hasTrips ? 'hidden md:block' : ''" fill="none" aria-hidden="true">
+        <svg viewBox="0 0 420 110" class="w-full max-w-[420px]" :class="hasTrips && !composing ? 'hidden md:block' : ''" fill="none" aria-hidden="true">
           <path
             d="M16 86 C 100 86, 110 24, 210 38 S 330 96, 400 28"
             stroke="#FFFFFF"
@@ -156,7 +156,7 @@ function onKey(e: KeyboardEvent) {
         </div>
       </div>
 
-      <ol v-if="!hasTrips" class="hidden gap-3 md:grid md:grid-cols-3">
+      <ol v-if="!hasTrips || composing" class="hidden gap-3 md:grid md:grid-cols-3">
         <li v-for="(s, i) in STEPS" :key="s.title" class="rounded-2xl bg-white/10 p-3.5">
           <div class="text-xs font-bold text-mint-text">Paso {{ i + 1 }}</div>
           <div class="mt-1 font-bold">{{ s.title }}</div>
@@ -172,34 +172,15 @@ function onKey(e: KeyboardEvent) {
       </div>
 
       <!-- With trips: the list first, a new one on demand -->
-      <div v-else-if="hasTrips" class="mx-auto flex w-full max-w-xl flex-col gap-4 md:py-6">
+      <div v-else-if="hasTrips && !composing" class="mx-auto flex w-full max-w-xl flex-col gap-4 md:py-6">
         <div class="flex items-center justify-between gap-3">
           <h2 class="font-display text-3xl font-bold md:text-4xl">Mis viajes</h2>
-          <button v-if="!composing" class="btn-primary h-11 px-5 text-[15px]" @click="newTrip">
+          <button class="btn-primary h-11 px-5 text-[15px]" @click="newTrip">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
             Nuevo viaje
           </button>
         </div>
 
-        <form v-if="composing" class="rounded-[22px] border border-slate-200 bg-white p-3.5 shadow-[0_12px_32px_rgba(14,31,24,0.07)]" @submit.prevent="start()">
-          <label for="first-msg" class="text-sm font-bold text-slate-600">¿A dónde vamos?</label>
-          <textarea
-            id="first-msg"
-            ref="box"
-            v-model="text"
-            rows="3"
-            class="mt-1 w-full resize-none bg-transparent text-[16px] leading-relaxed outline-none placeholder:text-slate-400"
-            placeholder="Ej: Italia en mayo, 10 días en pareja…"
-            @keydown="onKey"
-          />
-          <div class="flex items-center justify-between gap-2">
-            <button type="button" class="h-11 rounded-full px-4 text-sm font-bold text-slate-500 hover:bg-rocio" @click="composing = false">Cancelar</button>
-            <button class="btn-primary h-11 px-5 text-[15px]" :disabled="!text.trim() || starting">
-              {{ starting ? 'Arrancando…' : 'Empezar' }}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-            </button>
-          </div>
-        </form>
         <p v-if="error" class="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{{ error }}</p>
 
         <RouterLink
@@ -235,8 +216,16 @@ function onKey(e: KeyboardEvent) {
         </RouterLink>
       </div>
 
-      <!-- No trips yet: start the first one -->
+      <!-- No trips yet, or "Nuevo viaje": the big start -->
       <template v-else>
+        <button
+          v-if="hasTrips"
+          class="mx-auto flex w-full max-w-xl items-center gap-1 text-sm font-bold text-slate-500 hover:text-brand"
+          @click="composing = false"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+          Mis viajes
+        </button>
         <ol class="flex flex-col gap-3 md:hidden">
           <li v-for="(s, i) in STEPS" :key="s.title" class="flex items-center gap-3.5 rounded-2xl border border-slate-200 bg-white p-3.5">
             <span class="grid h-9 w-9 flex-none place-items-center rounded-xl bg-brand-soft font-bold text-brand-dark">{{ i + 1 }}</span>
@@ -253,6 +242,7 @@ function onKey(e: KeyboardEvent) {
             <label for="first-msg" class="sr-only">Contame de tu viaje</label>
             <textarea
               id="first-msg"
+              ref="box"
               v-model="text"
               rows="3"
               class="w-full resize-none bg-transparent text-[16px] leading-relaxed outline-none placeholder:text-slate-400"
