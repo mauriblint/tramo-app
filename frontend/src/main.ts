@@ -20,7 +20,7 @@ const router = createRouter({
     { path: '/plan', component: PlanView, meta: { title: 'Planificá tu viaje · tramo' } },
     // One route for the trip, a day and an activity: the same TripView stays mounted (data, chat and polling survive navigation).
     { path: '/trips/:id/:section(days|pins)?/:item?', component: TripView, props: true, meta: { auth: true } },
-    { path: '/reservas', component: InboxView, meta: { auth: true, title: 'Reservas por revisar · tramo' } },
+    { path: '/bookings', component: InboxView, meta: { auth: true, title: 'Reservas por revisar · tramo' } },
     { path: '/auth/verify', component: VerifyView },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
@@ -38,9 +38,9 @@ router.beforeEach(async (to) => {
   }
   if (auth.user && !inboxChecked) {
     inboxChecked = true
-    if (to.path !== '/reservas' && !to.path.startsWith('/auth/')) {
+    if (to.path !== '/bookings' && !to.path.startsWith('/auth/')) {
       const waiting = await api.inbox().catch(() => [])
-      if (waiting.length) return '/reservas'
+      if (waiting.length) return '/bookings'
     }
   }
   document.title = (to.meta.title as string | undefined) ?? 'tramo'
