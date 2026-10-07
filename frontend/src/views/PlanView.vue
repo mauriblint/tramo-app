@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { api, type Trip } from '@/api'
 import { auth, fetchMe, logout, openAuth, savePending, takePending } from '@/auth'
 import TramoLogo from '@/components/TramoLogo.vue'
-import { fmtDay } from '@/pinMeta'
+import { fmtDay, localToday } from '@/pinMeta'
 
 const router = useRouter()
 const trips = ref<Trip[]>([])
@@ -43,12 +43,13 @@ async function loadTrips() {
   }
 }
 
-const today = new Date().toISOString().slice(0, 10)
+const today = localToday()
 const daysUntil = (d: string) => Math.round((Date.parse(d) - Date.parse(today)) / 86_400_000)
 
 /** "En curso", "Faltan 12 días", "Terminado"… */
 function statusOf(t: Trip): { label: string; tone: 'now' | 'soon' | 'past' | 'draft' } {
   if (!t.startDate || !t.endDate) return { label: 'Sin fechas', tone: 'draft' }
+  if (t.datesTentative) return { label: 'Fechas a confirmar', tone: 'draft' }
   if (t.startDate <= today && today <= t.endDate) return { label: 'En curso', tone: 'now' }
   if (t.endDate < today) return { label: 'Terminado', tone: 'past' }
   const n = daysUntil(t.startDate)
@@ -210,7 +211,8 @@ function onKey(e: KeyboardEvent) {
           <span class="min-w-0 flex-1">
             <span class="block truncate text-[17px] font-extrabold">{{ t.name }}</span>
             <span class="block truncate text-[13px] text-slate-500">
-              <template v-if="t.startDate && t.endDate">{{ fmtDay(t.startDate, { day: 'numeric', month: 'short' }) }} → {{ fmtDay(t.endDate, { day: 'numeric', month: 'short', year: 'numeric' }) }}</template>
+              <template v-if="t.datesTentative">{{ [t.whenHint, t.lengthDays && `~${t.lengthDays} días`].filter(Boolean).join(' · ') || t.destination }}</template>
+              <template v-else-if="t.startDate && t.endDate">{{ fmtDay(t.startDate, { day: 'numeric', month: 'short' }) }} → {{ fmtDay(t.endDate, { day: 'numeric', month: 'short', year: 'numeric' }) }}</template>
               <template v-else>{{ t.destination }}</template>
               <span class="font-bold sm:hidden" :class="statusOf(t).tone === 'now' ? 'text-[#6B4E00]' : statusOf(t).tone === 'soon' ? 'text-brand-dark' : ''"> · {{ statusOf(t).label }}</span>
             </span>

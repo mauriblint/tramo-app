@@ -18,6 +18,13 @@ export interface Trip {
   departureCity: string | null
   departureTime: TimeOfDay | null
   currentCity: string | null
+  /** Built day by day (empty days are fine) instead of the guided route + full generation. */
+  freeform: boolean
+  /** Placeholder dates (no tickets yet): shown as "Día 1, Día 2…"; setting real ones moves the plan along. */
+  datesTentative: boolean
+  lengthDays: number | null
+  /** Rough "when" as the user said it ("julio"), while the dates are tentative. */
+  whenHint: string | null
   createdAt: string
   updatedAt: string
 }
@@ -194,7 +201,10 @@ export const api = {
       question: Question | null
     }>('GET', `/trips/${id}`),
   generate: (id: string, cities?: string[]) => req<GenerationStatus>('POST', `/trips/${id}/generate`, { cities: cities ?? null }),
-  updateTrip: (id: string, t: Partial<Trip>) => req<Trip>('PATCH', `/trips/${id}`, t),
+  /** New dates move the plan along: `moved` days, and `toIdeas` activities that fell outside. */
+  updateTrip: (id: string, t: Partial<Trip>) => req<Trip & { moved?: number; toIdeas?: number }>('PATCH', `/trips/${id}`, t),
+  generateDays: (id: string, days: string[], city: string | null) =>
+    req<{ generation: GenerationStatus; stops: Stop[] }>('POST', `/trips/${id}/days/generate`, { days, city }),
   deleteTrip: (id: string) => req<void>('DELETE', `/trips/${id}`),
 
   createBooking: (tripId: string, b: BookingInput) => req<Booking>('POST', `/trips/${tripId}/bookings`, b),

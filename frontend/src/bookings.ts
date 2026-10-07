@@ -81,7 +81,7 @@ export function missingLegs(stops: Stop[], bookings: Booking[]) {
 /** Every night of the trip and the hotel you sleep in (or null). */
 export function nights(trip: Trip, stops: Stop[], bookings: Booking[]) {
   const days = daysBetween(trip.startDate, trip.endDate).slice(0, -1)
-  return days.map((date) => ({ date, city: stopForDay(stops, date)?.city ?? null, hotel: hotelForNight(bookings, date) }))
+  return days.map((date) => ({ date, city: stopForDay(stops, date, trip.endDate)?.city ?? null, hotel: hotelForNight(bookings, date) }))
 }
 
 export function hotelForNight(bookings: Booking[], date: string): Booking | null {

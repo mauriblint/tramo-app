@@ -35,6 +35,7 @@ export function weatherIcon(code: number): { emoji: string; label: string } {
 export function useTripWeather(trip: Ref<Trip | null>, stops: Ref<Stop[]>) {
   const byDay = ref<Record<string, Weather['days'][number]>>({})
   async function load() {
+    if (!trip.value) return (byDay.value = {})
     for (const s of stops.value) {
       if (!s.startDate) continue
       try {
@@ -48,6 +49,6 @@ export function useTripWeather(trip: Ref<Trip | null>, stops: Ref<Stop[]>) {
     }
   }
   onMounted(load)
-  watch(() => stops.value.map((s) => `${s.city}${s.startDate}`).join(), load)
+  watch(() => `${!!trip.value}|${stops.value.map((s) => `${s.city}${s.startDate}`).join()}`, load)
   return byDay
 }

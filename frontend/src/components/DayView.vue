@@ -1,24 +1,32 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { api, type Booking, type Pin, type Stop, type TimeOfDay, type Trip, type WeatherDay } from '@/api'
+import { api, type Booking, type GenerationStatus, type Pin, type Stop, type TimeOfDay, type Trip, type WeatherDay } from '@/api'
 import { dayEvents, hotelForNight, mapsSearch, slotOf, type DayEvent } from '@/bookings'
 import BookingBlock from '@/components/BookingBlock.vue'
 import DayMap, { type DayPoint } from '@/components/DayMap.vue'
 import { geocodeCity } from '@/geo'
-import { TIMES, TIME_META, dayHeadline, daysBetween, fmtDay, stopForDay } from '@/pinMeta'
+import { TIMES, TIME_META, dayHeadline, dayName, daysBetween, localToday, stopForDay } from '@/pinMeta'
 import { weatherIcon } from '@/weather'
 
 /** One day, focused: its map, then morning / afternoon / evening as short cards that open each activity. */
-const props = defineProps<{ trip: Trip; stops: Stop[]; pins: Pin[]; bookings: Booking[]; day: string; weather: Record<string, WeatherDay> }>()
-const emit = defineEmits<{ located: [Pin, Pin]; add: [string] }>()
+const props = defineProps<{
+  trip: Trip
+  stops: Stop[]
+  pins: Pin[]
+  bookings: Booking[]
+  day: string
+  weather: Record<string, WeatherDay>
+  generation: GenerationStatus | null
+}>()
+const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null] }>()
 
 const allDays = computed(() => daysBetween(props.trip.startDate, props.trip.endDate))
 const index = computed(() => allDays.value.indexOf(props.day))
 const prev = computed(() => allDays.value[index.value - 1] ?? null)
 const next = computed(() => allDays.value[index.value + 1] ?? null)
 
-const stop = computed(() => stopForDay(props.stops, props.day))
+const stop = computed(() => stopForDay(props.stops, props.day, props.trip.endDate))
 const dayPins = computed(() => props.pins.filter((p) => p.day === props.day).sort((a, b) => a.position - b.position))
 const head = computed(() => dayHeadline(dayPins.value))
 const w = computed(() => props.weather[props.day])
@@ -48,6 +56,25 @@ const groups = computed(() => {
     .filter((g) => g.pins.length || g.before.length || g.after.length)
 })
 const hotel = computed(() => hotelForNight(props.bookings, props.day))
+
+// "Armar este día": the generator fills it around what's there; a day without a stop asks for the city first.
+const building = computed(() => !!props.generation?.running && !props.generation.doneDays.includes(props.day))
+const cityInput = ref('')
+const knownCities = computed(() => [...new Set(props.stops.map((s) => s.city))])
+const prevCity = computed(() => {
+  const i = allDays.value.indexOf(props.day)
+  return i > 0 ? (stopForDay(props.stops, allDays.value[i - 1]!, props.trip.endDate)?.city ?? '') : ''
+})
+watch(
+  () => props.day,
+  () => (cityInput.value = prevCity.value || (props.day === localToday() ? (props.trip.currentCity ?? '') : '')),
+  { immediate: true },
+)
+function build() {
+  const city = stop.value ? null : cityInput.value.trim()
+  if (!stop.value && !city) return
+  emit('generate', props.day, city)
+}
 
 const dayTrip = computed(() => stop.value?.dayTrips.find((t) => dayPins.value.some((p) => p.city?.toLowerCase().includes(t.toLowerCase()))) ?? null)
 
@@ -101,6 +128,9 @@ watch(
     loadCenter()
   },
 )
+// A day built while you look at it: its city and places arrive afterwards.
+watch(() => stop.value?.city, loadCenter)
+watch(() => numbered.value.map((p) => p.id).join(), locateAll)
 
 function firstSentence(s: string) {
   const m = s.match(/^.*?[.!?](\s|$)/)
@@ -149,7 +179,7 @@ function firstSentence(s: string) {
     <section class="relative z-[600] -mt-7 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:mt-6 md:rounded-none md:bg-transparent md:p-0">
       <div class="flex flex-col gap-2 px-1 pb-2">
         <span class="text-[13px] font-extrabold tracking-wide text-brand uppercase">
-          {{ fmtDay(day, { weekday: 'short', day: 'numeric', month: 'short' }) }}<template v-if="stop"> · {{ stop.city }}</template>
+          {{ dayName(trip, day) }}<template v-if="stop"> · {{ stop.city }}</template>
         </span>
         <h1 class="font-display text-[30px] leading-[1.05] font-bold tracking-tight md:text-[34px]">{{ head.title || 'Día libre' }}</h1>
         <p v-if="facts.length" class="flex flex-wrap gap-x-2 gap-y-1 text-[14px] text-slate-500">
@@ -195,9 +225,38 @@ function firstSentence(s: string) {
         </template>
       </div>
 
-      <p v-if="!dayPins.length && !events.length" class="mt-4 rounded-[20px] bg-white md:bg-rocio px-4 py-5 text-center text-[15px] text-slate-500">
-        Nada planeado todavía. Pedile ideas al copiloto o agregá algo vos.
-      </p>
+      <!-- Being built right now -->
+      <div v-if="building" class="mt-4 flex flex-col gap-2.5 rounded-[20px] bg-brand-soft px-4 py-4" aria-busy="true">
+        <span class="text-[14px] font-extrabold text-brand-dark">Armando el día…</span>
+        <span class="h-3.5 w-3/4 animate-pulse rounded-full bg-white" />
+        <span class="h-3 w-1/2 animate-pulse rounded-full bg-white" />
+      </div>
+
+      <!-- Empty day: build it (asking where, if the day has no city yet) -->
+      <form v-else-if="!dayPins.length" class="mt-4 flex flex-col gap-3 rounded-[22px] bg-white px-4 py-4 md:bg-rocio" @submit.prevent="build">
+        <p class="text-[15px] text-slate-600">
+          Nada planeado todavía.
+          <template v-if="stop">Te armo el día en <b class="text-noche">{{ stop.city }}</b>, o agregá algo vos.</template>
+          <template v-else>¿Dónde vas a estar este día?</template>
+        </p>
+        <template v-if="!stop">
+          <label class="sr-only" :for="`city-${day}`">Ciudad de este día</label>
+          <input
+            :id="`city-${day}`"
+            v-model="cityInput"
+            list="day-cities"
+            placeholder="Ciudad, por ejemplo Kioto"
+            class="h-12 rounded-2xl border-[1.5px] border-[#DCE3DF] bg-white px-4 text-[16px] outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
+          />
+          <datalist id="day-cities">
+            <option v-for="c in knownCities" :key="c" :value="c" />
+          </datalist>
+        </template>
+        <button class="btn-primary h-12 text-[15px]" :disabled="!!generation?.running || (!stop && !cityInput.trim())">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9z" /><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" /></svg>
+          Armar este día
+        </button>
+      </form>
 
       <a
         v-if="hotel && next"
@@ -216,13 +275,25 @@ function firstSentence(s: string) {
         <span>Zona para dormir: <b class="text-brand-dark">{{ stop.lodging }}</b></span>
       </div>
 
-      <button
-        class="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white md:hover:bg-rocio"
-        @click="emit('add', day)"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-        Agregar algo a este día
-      </button>
+      <div class="mt-4 flex gap-2">
+        <button
+          class="flex h-12 flex-1 items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white md:hover:bg-rocio"
+          @click="emit('add', day)"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          Agregar algo
+        </button>
+        <button
+          v-if="dayPins.length && stop && !building"
+          class="flex h-12 flex-1 items-center justify-center gap-2 rounded-full border-[1.5px] border-brand text-[15px] font-bold text-brand hover:bg-brand-soft disabled:opacity-50"
+          :disabled="!!generation?.running"
+          title="Suma planes alrededor de lo que ya tiene el día"
+          @click="build"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9z" /></svg>
+          Completar el día
+        </button>
+      </div>
     </section>
   </div>
 </template>

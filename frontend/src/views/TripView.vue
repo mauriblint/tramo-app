@@ -69,7 +69,7 @@ const itineraryPills = computed(() => {
   const t = trip.value
   return [
     days.value.length ? `${days.value.length} días` : null,
-    t?.startDate && t.endDate ? `${fmtDay(t.startDate, { day: 'numeric', month: 'short' })} → ${fmtDay(t.endDate, { day: 'numeric', month: 'short' })}` : null,
+    datesLabel.value,
     stops.value.length ? `${stops.value.length} ${stops.value.length === 1 ? 'ciudad' : 'ciudades'}` : null,
   ].filter((x): x is string => !!x)
 })
@@ -84,7 +84,15 @@ watch(
 )
 
 const currentPin = computed(() => (level.value === 'pin' ? (pins.value.find((p) => p.id === props.item) ?? null) : null))
-const weather = useTripWeather(trip, stops)
+// Placeholder dates have no real weather to show.
+const weather = useTripWeather(computed(() => (trip.value?.datesTentative ? null : trip.value)), stops)
+/** "julio · a confirmar" / "10 nov → 24 nov" */
+const datesLabel = computed(() => {
+  const t = trip.value
+  if (!t?.startDate || !t.endDate) return null
+  if (t.datesTentative) return t.whenHint ? `${t.whenHint} · fechas a confirmar` : 'Fechas a confirmar'
+  return `${fmtDay(t.startDate, { day: 'numeric', month: 'short' })} → ${fmtDay(t.endDate, { day: 'numeric', month: 'short' })}`
+})
 
 // The copilot gets the current day or activity as context, so "cambiá esto" knows what "esto" is.
 const copilotContext = computed(() => {
@@ -104,7 +112,7 @@ const tripFacts = computed(() => {
   if (!t) return []
   const n = days.value.length
   return [
-    t.startDate && t.endDate ? `${fmtDay(t.startDate, { day: 'numeric', month: 'short' })} – ${fmtDay(t.endDate, { day: 'numeric', month: 'short' })}` : null,
+    datesLabel.value,
     n ? `${n} días` : null,
     stops.value.length ? `${stops.value.length} ${stops.value.length === 1 ? 'ciudad' : 'ciudades'}` : null,
     t.travelers ? TRAVELERS_LABEL[t.travelers] : null,
@@ -119,7 +127,7 @@ const editingTrip = ref(false)
 const tripForm = ref<Partial<Trip>>({})
 
 /** Before the day-by-day exists the screen is a conversation (+ route); afterwards it's the plan. */
-const planned = computed(() => !!generation.value?.running || pins.value.some((p) => p.day))
+const planned = computed(() => !!trip.value?.freeform || !!generation.value?.running || pins.value.some((p) => p.day))
 
 // Offer "Add to Home Screen" once the itinerary is ready: that's when having it on the phone pays off.
 const showInstall = ref(false)
@@ -147,7 +155,9 @@ const steps = computed(() => (trip.value ? profileSteps(trip.value, stops.value)
 const quick = computed(() =>
   !trip.value
     ? []
-    : planned.value
+    : trip.value.freeform && !pins.value.some((p) => p.day)
+      ? ['Proponeme una ruta', 'Ideas para arrancar', '¿Qué conviene reservar ya?'].map((label) => ({ label }))
+      : planned.value
       ? ['¿Qué días están muy cargados?', 'Sumá un buen restaurante por noche', '¿Qué conviene reservar ya?', 'Proponeme alternativas si llueve'].map(
           (label) => ({ label }),
         )
@@ -157,7 +167,7 @@ const routeSummary = computed(() => steps.value.find((s) => s.key === 'ruta')?.v
 const headerSubtitle = computed(() => {
   const t = trip.value
   if (!t) return null
-  if (planned.value) return [routeSummary.value, t.startDate && t.endDate && `${fmtDay(t.startDate)} → ${fmtDay(t.endDate)}`].filter(Boolean).join(' · ')
+  if (planned.value) return [routeSummary.value, datesLabel.value].filter(Boolean).join(' · ')
   return 'Nuevo viaje'
 })
 
@@ -213,6 +223,22 @@ async function generate() {
   if (!res) return
   generation.value = res
   startPolling()
+}
+
+/** "Armar este día" (and the city, for a day that has none yet). */
+async function buildDays(day: string, city: string | null) {
+  const res = await run(() => api.generateDays(props.id, [day], city))
+  if (!res) return
+  generation.value = res.generation
+  stops.value = res.stops
+  startPolling()
+}
+
+/** Short confirmation at the top (e.g. after moving the dates). */
+const notice = ref('')
+function notify(text: string) {
+  notice.value = text
+  setTimeout(() => (notice.value = ''), 7000)
 }
 
 function flash(ids: string[]) {
@@ -386,10 +412,38 @@ function openTripEditor() {
   editingTrip.value = true
 }
 
+// Moving the start keeps the length: the return date follows (change it after if the trip got longer or shorter).
+watch(
+  () => tripForm.value.startDate,
+  (start, old) => {
+    const end = tripForm.value.endDate
+    if (!editingTrip.value || !start || !old || !end || start === old) return
+    const shift = Date.parse(start) - Date.parse(old)
+    tripForm.value.endDate = new Date(Date.parse(end) + shift).toISOString().slice(0, 10)
+  },
+)
+
 async function saveTrip() {
+  const before = trip.value
   const res = await run(() => api.updateTrip(props.id, tripForm.value))
-  if (res) trip.value = res
   editingTrip.value = false
+  if (!res) return
+  if (res.startDate === before?.startDate && res.endDate === before?.endDate) {
+    trip.value = res
+    return
+  }
+  // New dates: the plan moved along with them.
+  const data = await run(() => api.getTrip(props.id))
+  if (data) {
+    trip.value = data.trip
+    stops.value = data.stops
+    pins.value = data.pins
+  }
+  const parts = [
+    res.moved ? `Moví todo el plan ${Math.abs(res.moved)} ${Math.abs(res.moved) === 1 ? 'día' : 'días'} ${res.moved > 0 ? 'para adelante' : 'para atrás'}.` : null,
+    res.toIdeas ? `${res.toIdeas} ${res.toIdeas === 1 ? 'actividad quedó' : 'actividades quedaron'} fuera de las fechas: ${res.toIdeas === 1 ? 'está' : 'están'} en Ideas.` : null,
+  ].filter(Boolean)
+  if (parts.length) notify(parts.join(' '))
 }
 
 async function deleteTrip() {
@@ -405,6 +459,10 @@ const editorTitle = computed(() =>
 
 <template>
   <div :class="trip && planned ? '' : 'flex h-dvh flex-col'">
+    <p v-if="notice" class="fixed inset-x-3 top-3 z-[1100] mx-auto flex max-w-lg items-start gap-2 rounded-2xl bg-noche px-4 py-3 text-sm font-semibold text-white shadow-xl" role="status">
+      <span class="flex-1">{{ notice }}</span>
+      <button aria-label="Cerrar" @click="notice = ''">×</button>
+    </p>
     <p v-if="error" class="flex items-start gap-2 bg-rose-50 px-3 py-2 text-sm text-rose-700">
       <span class="flex-1">{{ error }}</span>
       <button aria-label="Cerrar" @click="error = ''">×</button>
@@ -519,6 +577,13 @@ const editorTitle = computed(() =>
                   />
                 </div>
               </div>
+              <div v-if="trip.datesTentative" class="flex flex-wrap items-center gap-3 rounded-[20px] bg-sun-soft px-4 py-3 text-[14px] text-[#6B4E00]">
+                <span class="min-w-0 flex-1">
+                  <b>Fechas a confirmar{{ trip.whenHint ? ` · ${trip.whenHint}` : '' }}.</b>
+                  Cuando tengas los pasajes, poné las fechas: todo lo que armes se mueve con ellas.
+                </span>
+                <button class="h-10 flex-none rounded-full bg-white px-4 text-[13px] font-extrabold text-noche hover:bg-white/80" @click="openTripEditor">Poner fechas</button>
+              </div>
               <ItineraryList :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
 
@@ -556,8 +621,10 @@ const editorTitle = computed(() =>
           :bookings="bookings"
           :day="item!"
           :weather="weather"
+          :generation="generation"
           @located="(p, np) => Object.assign(p, np)"
           @add="openNew"
+          @generate="buildDays"
         />
 
         <PinDetail
@@ -634,9 +701,13 @@ const editorTitle = computed(() =>
         <input v-model="tripForm.name" class="input" placeholder="Nombre" required />
         <input v-model="tripForm.destination" class="input" placeholder="Destino" />
         <div class="grid grid-cols-2 gap-3">
-          <input v-model="tripForm.startDate" type="date" class="input" />
-          <input v-model="tripForm.endDate" type="date" class="input" />
+          <input v-model="tripForm.startDate" type="date" class="input" aria-label="Fecha de ida" />
+          <input v-model="tripForm.endDate" type="date" class="input" aria-label="Fecha de vuelta" />
         </div>
+        <p class="text-[13px] text-slate-500">
+          <template v-if="trip?.datesTentative">Son fechas provisorias. Al poner las reales, todo lo que armaste se mueve con ellas.</template>
+          <template v-else>Si cambiás la ida, todo el plan se mueve con ella; lo que quede fuera de las fechas pasa a Ideas.</template>
+        </p>
         <textarea v-model="tripForm.notes" class="input min-h-32" placeholder="Ficha: vuelos, viajeros, intereses, ritmo…" />
         <div class="flex items-center gap-2">
           <button class="btn-primary">Guardar</button>

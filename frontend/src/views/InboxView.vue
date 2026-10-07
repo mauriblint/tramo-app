@@ -5,7 +5,7 @@ import { useRouter } from 'vue-router'
 import { api, type InboxItem, type Trip } from '@/api'
 import { auth } from '@/auth'
 import BookingSummary from '@/components/BookingSummary.vue'
-import { fmtDay } from '@/pinMeta'
+import { fmtDay, localToday } from '@/pinMeta'
 
 /** Forwarded emails we couldn't place on our own: the user picks the trip (account-wide, not per trip). */
 const router = useRouter()
@@ -17,7 +17,7 @@ const loaded = ref(false)
 const busyId = ref<string | null>(null)
 const error = ref('')
 
-const today = new Date().toISOString().slice(0, 10)
+const today = localToday()
 const isOpen = (t: Trip) => !t.endDate || t.endDate >= today
 
 /** Ongoing and upcoming trips first (by date), finished ones after. */

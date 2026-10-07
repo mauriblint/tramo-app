@@ -37,7 +37,7 @@ const gaps = computed(() => {
 })
 
 const nightsOf = (b: Booking) => daysBetween(b.checkInDate, b.checkOutDate).length - 1
-const cityOf = (b: Booking) => stopForDay(props.stops, b.checkInDate!)?.city ?? null
+const cityOf = (b: Booking) => stopForDay(props.stops, b.checkInDate!, props.trip.endDate)?.city ?? null
 </script>
 
 <template>

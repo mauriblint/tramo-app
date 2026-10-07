@@ -38,6 +38,12 @@ export const TIME_META: Record<TimeOfDay, { label: string; emoji: string }> = {
 }
 export const TIMES = Object.keys(TIME_META) as TimeOfDay[]
 
+/** Today as YYYY-MM-DD in the traveler's own timezone (UTC is a day behind in Japan until 9 am). */
+export function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** All dates between start and end (inclusive), YYYY-MM-DD. */
 export function daysBetween(start: string | null, end: string | null): string[] {
   if (!start || !end) return []
@@ -55,10 +61,16 @@ export const fmtDay = (d: string, opts: Intl.DateTimeFormatOptions = { weekday: 
   new Date(`${d}T00:00:00`).toLocaleDateString('es', opts).replace(/\./g, '')
 
 /** The stop you're based at on a given day: from its arrival day up to the day before leaving (the last stop keeps its last day). */
-export function stopForDay<S extends { startDate: string | null; endDate: string | null }>(stops: S[], day: string): S | null {
-  return (
-    stops.find((s, i) => s.startDate && s.endDate && day >= s.startDate && (i === stops.length - 1 ? day <= s.endDate : day < s.endDate)) ?? null
-  )
+/** The stop a day belongs to: arrival up to the day before leaving; the trip's last day goes to the stop that reaches it. */
+export function stopForDay<S extends { startDate: string | null; endDate: string | null }>(stops: S[], day: string, tripEnd?: string | null): S | null {
+  const end = tripEnd ?? stops.at(-1)?.endDate
+  return stops.find((s) => s.startDate && s.endDate && day >= s.startDate && (day < s.endDate || (day === s.endDate && s.endDate === end))) ?? null
+}
+
+/** "Día 3" while the dates are placeholders, the real date otherwise. */
+export function dayName(trip: { startDate: string | null; datesTentative: boolean }, day: string, opts: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' }) {
+  if (!trip.datesTentative || !trip.startDate) return fmtDay(day, opts)
+  return `Día ${Math.round((Date.parse(day) - Date.parse(trip.startDate)) / 86_400_000) + 1}`
 }
 
 /**
