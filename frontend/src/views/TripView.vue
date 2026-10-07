@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
 import BookingForm from '@/components/BookingForm.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
+import CopilotDock from '@/components/CopilotDock.vue'
 import HotelList from '@/components/HotelList.vue'
 import PasteBookings from '@/components/PasteBookings.vue'
 import TransportList from '@/components/TransportList.vue'
@@ -44,8 +45,8 @@ const pendingText = ref('')
 const failed = ref(0)
 const extractingId = ref<string | null>(null)
 const highlightIds = ref<string[]>([])
-/** Planned view: the copilot opens as a sheet over whatever you're looking at. */
-const sheet = ref<'chat' | null>(null)
+/** The copilot dock (column or bottom sheet); other screens can open it. */
+const dock = ref<InstanceType<typeof CopilotDock>>()
 
 // Where you are: the trip (with its tabs), one day, or one activity — all in the URL.
 const level = computed<'trip' | 'day' | 'pin'>(() =>
@@ -436,11 +437,11 @@ const editorTitle = computed(() =>
 
     <!-- ============ Planned: trip → day → activity, one narrow column ============ -->
     <!-- Phone: one column (map, sheet, tabs). Desktop: the green trip sidebar + one white panel showing one thing at a time. -->
-    <div v-else-if="trip" class="min-h-dvh bg-rocio pb-32 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
-      <TripSidebar class="hidden md:flex" :trip="trip" :facts="tripFacts" :active="navTab" :ideas="ideas.length" @copilot="sheet = 'chat'" @edit="openTripEditor" />
+    <div v-else-if="trip" class="min-h-dvh bg-rocio pb-40 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
+      <TripSidebar class="hidden md:flex" :trip="trip" :facts="tripFacts" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @edit="openTripEditor" />
 
       <div ref="panel" class="md:min-w-0 md:flex-1 md:overflow-y-auto md:rounded-[28px] md:bg-white">
-      <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:py-7">
+      <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">
         <template v-if="level === 'trip'">
           <!-- Desktop section header -->
           <div class="mb-5 hidden items-center justify-between gap-4 md:flex">
@@ -564,48 +565,21 @@ const editorTitle = computed(() =>
       </div>
       </div>
 
-      <!-- Copilot bar: it knows which day or activity you're looking at -->
-      <div class="pointer-events-none fixed inset-x-0 bottom-0 z-[700] px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:hidden">
-        <button
-          class="pointer-events-auto mx-auto flex h-14 w-full max-w-[720px] items-center gap-3 rounded-full bg-noche pr-2 pl-5 text-left text-white shadow-[0_12px_28px_rgba(14,31,24,0.3)]"
-          @click="sheet = 'chat'"
-        >
-          <span class="flex-1 truncate text-[15px] text-white/70">{{ copilotPlaceholder }}</span>
-          <span class="grid h-10 w-10 place-items-center rounded-full bg-white text-noche">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-          </span>
-        </button>
-      </div>
-
-      <div v-if="sheet" class="fixed inset-0 z-[900] flex items-end justify-center bg-noche/30" @click.self="sheet = null">
-        <div class="flex h-[88dvh] w-full max-w-[720px] flex-col overflow-hidden rounded-t-[28px] bg-rocio shadow-2xl">
-          <div class="flex items-center justify-between px-5 pt-4 pb-2">
-            <div class="min-w-0">
-              <h2 class="font-display text-lg font-bold">Copiloto</h2>
-              <p v-if="copilotContext" class="truncate text-[13px] text-slate-500">Sobre {{ copilotContext }}</p>
-            </div>
-            <button aria-label="Cerrar" class="grid h-10 w-10 place-items-center rounded-full hover:bg-white" @click="sheet = null">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
-            </button>
-          </div>
-          <ChatPanel
-            class="min-h-0 flex-1"
-            :messages="messages"
-            :sending="sending"
-            :pending-text="pendingText"
-            :extracting-id="extractingId"
-            :failed="failed"
-            :quick="quick"
-            :placeholder="copilotPlaceholder"
-            @send="sendFromCopilot"
-            @extract="extract"
-            @accept="(m, i) => accept(m, i)"
-            @edit-accept="(m, i) => (editor = { ctx: { kind: 'suggestion', message: m, index: i }, draft: { ...m.suggestions[i]!.draft } })"
-            @dismiss="dismiss"
-            @clear="clearChat"
-          />
-        </div>
-      </div>
+      <!-- The copilot, always present: right column on wide screens, bottom bar + sheet elsewhere. It knows the day/activity you're on. -->
+      <CopilotDock
+        ref="dock"
+        :messages="messages"
+        :sending="sending"
+        :pending-text="pendingText"
+        :extracting-id="extractingId"
+        :failed="failed"
+        :quick="quick"
+        :context="copilotContext"
+        :placeholder="copilotPlaceholder"
+        @send="sendFromCopilot"
+        @accept="(m, i) => accept(m, i)"
+        @clear="clearChat"
+      />
     </div>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />

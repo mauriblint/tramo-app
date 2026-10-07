@@ -20,7 +20,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
 </script>
 
 <template>
-  <aside class="flex h-full w-[340px] flex-none flex-col gap-6 overflow-y-auto rounded-[28px] bg-brand p-6 text-white lg:w-[380px]">
+  <aside class="flex h-full w-[340px] flex-none flex-col gap-6 overflow-y-auto rounded-[28px] bg-brand p-6 text-white xl:w-[300px]">
     <div class="flex items-center justify-between">
       <RouterLink to="/plan" aria-label="tramo"><TramoLogo :size="28" on-dark /></RouterLink>
       <RouterLink to="/plan" class="text-[13px] font-semibold text-white/90 hover:text-white">Mis viajes</RouterLink>
@@ -63,8 +63,9 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
 
     <span class="flex-1" />
 
+    <!-- On wide screens the copilot has its own column. -->
     <button
-      class="flex h-14 items-center gap-3 rounded-full bg-noche pr-2 pl-5 text-left shadow-[0_12px_28px_rgba(14,31,24,0.3)] hover:bg-black"
+      class="flex h-14 items-center gap-3 rounded-full bg-noche pr-2 pl-5 xl:hidden text-left shadow-[0_12px_28px_rgba(14,31,24,0.3)] hover:bg-black"
       @click="$emit('copilot')"
     >
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7EE2B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z" /></svg>
