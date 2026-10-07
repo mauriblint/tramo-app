@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 
 import type { Booking, BookingInput, BookingKind } from '@/api'
-import { KIND_META } from '@/bookings'
+import { KIND_META, changesLabel } from '@/bookings'
 
 /** Manual entry for a flight, train, bus or hotel: the few fields you actually use on the road. */
 const props = defineProps<{ initial: BookingInput; editing: Booking | null; kinds: BookingKind[]; places: string[]; busy?: boolean; error?: string }>()
@@ -61,6 +61,10 @@ function save() {
       <datalist id="booking-places">
         <option v-for="p in places" :key="p" :value="p" />
       </datalist>
+
+      <p v-if="!hotel && b.legs.length" class="rounded-2xl bg-sun-soft px-4 py-3 text-[13px] leading-relaxed text-[#6B4E00]">
+        <b>{{ changesLabel(b) }}.</b> Los tramos se mantienen mientras no cambies desde, hasta, fecha u horarios; si los cambias, se guarda como viaje directo.
+      </p>
 
       <!-- Transport -->
       <template v-if="!hotel">

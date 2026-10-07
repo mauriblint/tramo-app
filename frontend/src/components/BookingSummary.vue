@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { BookingInput } from '@/api'
+import BookingLegs from '@/components/BookingLegs.vue'
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT, KIND_META } from '@/bookings'
 import { fmtDay } from '@/pinMeta'
 
@@ -34,6 +35,7 @@ function when(b: BookingInput) {
         <span class="block font-extrabold">{{ booking.origin }} → {{ booking.destination }}</span>
         <span class="block text-slate-600">{{ when(booking) }}</span>
         <span v-if="booking.seat" class="block text-slate-500">Asiento {{ booking.seat }}</span>
+        <BookingLegs v-if="booking.legs.length" :legs="booking.legs" :kind="booking.kind" class="mt-2" />
       </template>
       <span v-if="booking.reference" class="mt-1 inline-block rounded-md bg-white px-1.5 text-xs font-extrabold tracking-wide">{{ booking.reference }}</span>
       <span v-if="booking.notes" class="mt-1 block text-xs text-slate-500">{{ booking.notes }}</span>

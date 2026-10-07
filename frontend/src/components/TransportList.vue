@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 
 import type { Booking, BookingInput, Stop, Trip } from '@/api'
+import BookingLegs from '@/components/BookingLegs.vue'
 import { KIND_META, mapsSearch, missingLegs } from '@/bookings'
 import { daysBetween, fmtDay } from '@/pinMeta'
 
@@ -55,6 +56,7 @@ const rows = computed<Row[]>(() => {
             </span>
           </span>
         </span>
+        <BookingLegs v-if="r.booking.legs.length" :legs="r.booking.legs" :kind="r.booking.kind" class="border-t border-[#E3EAE6] pt-2.5" />
         <span v-if="r.booking.seat || r.booking.notes" class="text-[13px] text-slate-600">
           <template v-if="r.booking.seat">Asiento {{ r.booking.seat }}</template><template v-if="r.booking.seat && r.booking.notes"> · </template>{{ r.booking.notes }}
         </span>

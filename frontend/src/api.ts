@@ -47,9 +47,24 @@ export interface Stop {
 
 export type BookingKind = 'flight' | 'train' | 'bus' | 'hotel'
 
+/** One leg of a journey with connections (a layover, a train change). */
+export interface Leg {
+  origin: string | null
+  destination: string | null
+  departDate: string | null
+  departTime: string | null
+  arriveDate: string | null
+  arriveTime: string | null
+  carrier: string | null
+  number: string | null
+  seat: string | null
+}
+
 /** Something the traveler booked. Transport uses origin…seat, hotels hotelName…checkOutTime; the rest stays null. */
 export interface BookingInput {
   kind: BookingKind
+  /** Empty for a direct trip; otherwise the legs of the journey, whose ends and times the booking spans. */
+  legs: Leg[]
   origin: string | null
   destination: string | null
   departDate: string | null

@@ -1,4 +1,4 @@
-import type { Booking, BookingInput, BookingKind, Stop, TimeOfDay, Trip } from './api'
+import type { Booking, BookingInput, BookingKind, Leg, Stop, TimeOfDay, Trip } from './api'
 import { daysBetween, stopForDay } from './pinMeta'
 
 export const KIND_META: Record<BookingKind, { label: string; icon: string }> = {
@@ -19,6 +19,7 @@ export const DEFAULT_CHECK_OUT = '11:00'
 export function emptyBooking(kind: BookingKind, prefill: Partial<BookingInput> = {}): BookingInput {
   return {
     kind,
+    legs: [],
     origin: null,
     destination: null,
     departDate: null,
@@ -38,6 +39,23 @@ export function emptyBooking(kind: BookingKind, prefill: Partial<BookingInput> =
     notes: null,
     ...prefill,
   }
+}
+
+const minutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+
+/** Time to change between two legs ("15 min", "1 h 20"), when both times are known and it's the same day. */
+export function transferTime(a: Leg, b: Leg): string | null {
+  if (!a.arriveTime || !b.departTime || (a.arriveDate ?? a.departDate) !== b.departDate) return null
+  const m = minutes(b.departTime) - minutes(a.arriveTime)
+  if (m < 0) return null
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60}` : ''}`
+}
+
+/** "Cambio en Toyama", "2 cambios", for one-line summaries. */
+export function changesLabel(b: BookingInput): string | null {
+  if (b.legs.length < 2) return null
+  const word = b.kind === 'flight' ? 'Escala' : 'Cambio'
+  return b.legs.length === 2 ? `${word} en ${b.legs[0]!.destination}` : `${b.legs.length - 1} ${word.toLowerCase()}s`
 }
 
 const norm = (s: string | null | undefined) =>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import BookingLegs from '@/components/BookingLegs.vue'
 import { KIND_META, eventDirections, type DayEvent } from '@/bookings'
 import { fmtDay } from '@/pinMeta'
 
@@ -33,6 +34,7 @@ const directions = computed(() => eventDirections(props.event, props.city))
         </div>
       </div>
     </div>
+    <BookingLegs v-if="b.legs.length" :legs="b.legs" :kind="b.kind" dark class="border-t border-white/10 pt-3" />
     <div v-if="b.seat || b.notes" class="text-[13px] text-mint-text">
       <template v-if="b.seat">Asiento {{ b.seat }}</template><template v-if="b.seat && b.notes"> · </template>{{ b.notes }}
     </div>

@@ -47,6 +47,9 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS bookings_trip ON bookings(trip_id);
 `)
+const bookingCols = new Set((db.prepare('PRAGMA table_info(bookings)').all() as { name: string }[]).map((c) => c.name))
+// Connections bought as one ticket (a layover, a train change): the booking is the whole journey, each leg in here.
+if (!bookingCols.has('legs')) db.exec(`ALTER TABLE bookings ADD COLUMN legs TEXT NOT NULL DEFAULT '[]'`)
 
 const FIELDS = [
   'origin',
@@ -69,14 +72,19 @@ const FIELDS = [
 ] as const
 type Field = (typeof FIELDS)[number]
 
-export type BookingInput = { kind: BookingKind } & { [K in Field]: string | null }
+const LEG_FIELDS = ['origin', 'destination', 'departDate', 'departTime', 'arriveDate', 'arriveTime', 'carrier', 'number', 'seat'] as const
+/** One leg of a journey with connections; the booking's own origin…arriveTime span the whole journey. */
+export type Leg = { [K in (typeof LEG_FIELDS)[number]]: string | null }
+const MAX_LEGS = 6
+
+export type BookingInput = { kind: BookingKind; legs: Leg[] } & { [K in Field]: string | null }
 export type Booking = BookingInput & { id: string; tripId: string; createdAt: string; updatedAt: string }
 
 const col = (f: string) => f.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
 
 type Row = Record<string, string | null>
 function toBooking(r: Row): Booking {
-  const b = { id: r.id, tripId: r.trip_id, kind: r.kind, createdAt: r.created_at, updatedAt: r.updated_at } as Booking
+  const b = { id: r.id, tripId: r.trip_id, kind: r.kind, legs: JSON.parse(r.legs ?? '[]'), createdAt: r.created_at, updatedAt: r.updated_at } as Booking
   for (const f of FIELDS) b[f] = r[col(f)] ?? null
   return b
 }
@@ -84,11 +92,43 @@ function toBooking(r: Row): Booking {
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const TIME = /^\d{2}:\d{2}$/
 
+const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+const date = (v: string | null) => (v && DATE.test(v) ? v : null)
+const time = (v: string | null) => {
+  const t = v && /^\d:\d{2}$/.test(v) ? `0${v}` : v
+  return t && TIME.test(t) ? t : null
+}
+
+/** Legs that make a journey: at least two, each with both ends (anything malformed is dropped, not an error). */
+function cleanLegs(raw: unknown): Leg[] {
+  if (!Array.isArray(raw)) return []
+  const legs = raw.slice(0, MAX_LEGS).map((l: any) => {
+    const leg = Object.fromEntries(LEG_FIELDS.map((f) => [f, str(l?.[f])])) as Leg
+    for (const f of ['departDate', 'arriveDate'] as const) leg[f] = date(leg[f])
+    for (const f of ['departTime', 'arriveTime'] as const) leg[f] = time(leg[f])
+    return leg
+  })
+  return legs.length >= 2 && legs.every((l) => l.origin && l.destination) ? legs : []
+}
+
+/** The legs still describe the booking (same ends, same departure and arrival); after a manual edit that changed them, they don't. */
+function legsMatch(b: BookingInput, legs: Leg[]): boolean {
+  const first = legs[0]!
+  const last = legs[legs.length - 1]!
+  return (
+    first.origin === b.origin &&
+    last.destination === b.destination &&
+    (first.departDate ?? b.departDate) === b.departDate &&
+    first.departTime === b.departTime &&
+    last.arriveTime === b.arriveTime
+  )
+}
+
 /** Keep only known fields, trim them, and check what each kind needs. Throws 400 with a readable message. */
 export function cleanBooking(body: any, current?: Booking): BookingInput {
   const kind = (body?.kind ?? current?.kind) as BookingKind
   if (!BOOKING_KINDS.includes(kind)) throw new HttpError(400, 'Tipo de reserva inválido')
-  const out = { kind } as BookingInput
+  const out = { kind, legs: [] as Leg[] } as BookingInput
   for (const f of FIELDS) {
     const v = f in (body ?? {}) ? body[f] : current?.[f]
     const s = typeof v === 'string' ? v.trim() : null
@@ -108,6 +148,8 @@ export function cleanBooking(body: any, current?: Booking): BookingInput {
     if (out.arriveDate && out.arriveDate < out.departDate) throw new HttpError(400, 'La llegada es antes de la salida')
     if (out.arriveDate === out.departDate) out.arriveDate = null
     for (const f of ['hotelName', 'address', 'checkInDate', 'checkInTime', 'checkOutDate', 'checkOutTime'] as const) out[f] = null
+    const legs = cleanLegs(body && 'legs' in body ? body.legs : current?.legs)
+    out.legs = legs.length && legsMatch(out, legs) ? legs : []
   } else {
     if (!out.hotelName) throw new HttpError(400, 'Completá el nombre del hotel')
     if (!out.checkInDate || !out.checkOutDate) throw new HttpError(400, 'Completá check-in y check-out')
@@ -139,15 +181,16 @@ export function createBooking(tripId: string, b: BookingInput): Booking {
   const id = randomUUID()
   const t = new Date().toISOString()
   db.prepare(
-    `INSERT INTO bookings (id, trip_id, kind, ${FIELDS.map(col).join(', ')}, created_at, updated_at)
-     VALUES (?, ?, ?, ${FIELDS.map(() => '?').join(', ')}, ?, ?)`,
-  ).run(id, tripId, b.kind, ...FIELDS.map((f) => b[f]), t, t)
+    `INSERT INTO bookings (id, trip_id, kind, legs, ${FIELDS.map(col).join(', ')}, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ${FIELDS.map(() => '?').join(', ')}, ?, ?)`,
+  ).run(id, tripId, b.kind, JSON.stringify(b.legs), ...FIELDS.map((f) => b[f]), t, t)
   return getBooking(id)!
 }
 
 export function updateBooking(id: string, b: BookingInput): Booking | null {
-  db.prepare(`UPDATE bookings SET kind = ?, ${FIELDS.map((f) => `${col(f)} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(
+  db.prepare(`UPDATE bookings SET kind = ?, legs = ?, ${FIELDS.map((f) => `${col(f)} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(
     b.kind,
+    JSON.stringify(b.legs),
     ...FIELDS.map((f) => b[f]),
     new Date().toISOString(),
     id,
