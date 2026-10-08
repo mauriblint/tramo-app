@@ -1,11 +1,33 @@
 <script setup lang="ts">
+import { nextTick, ref } from 'vue'
+
 import type { Trip } from '@/api'
 import TramoLogo from '@/components/TramoLogo.vue'
 import type { TripTab } from '@/components/TripTabs.vue'
 
 /** Desktop: the trip's identity and sections, in the same green panel used while creating it. */
-defineProps<{ trip: Trip; active: TripTab; ideas: number }>()
-defineEmits<{ copilot: []; edit: [] }>()
+const props = defineProps<{ trip: Trip; active: TripTab; ideas: number }>()
+const emit = defineEmits<{ copilot: []; rename: [string]; delete: [] }>()
+
+// The pencil turns the name into a field: Enter (or leaving it) saves, Esc cancels.
+const editing = ref(false)
+const draft = ref('')
+const field = ref<HTMLInputElement>()
+async function startRename() {
+  menu.value = false
+  draft.value = props.trip.name
+  editing.value = true
+  await nextTick()
+  field.value?.select()
+}
+function finishRename(save: boolean) {
+  if (!editing.value) return
+  editing.value = false
+  const name = draft.value.trim()
+  if (save && name && name !== props.trip.name) emit('rename', name)
+}
+
+const menu = ref(false)
 
 const ITEMS: { key: TripTab; label: string; icon: string }[] = [
   { key: 'itinerario', label: 'Itinerario', icon: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>' },
@@ -26,16 +48,43 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
       <RouterLink to="/plan" class="text-[13px] font-semibold text-white/90 hover:text-white">Mis viajes</RouterLink>
     </div>
 
-    <div class="flex items-start gap-2">
-      <h2 class="font-display min-w-0 flex-1 text-[30px] leading-[1.08] font-bold">{{ trip.name }}</h2>
-      <button
-        class="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
-        aria-label="Editar datos del viaje"
-        title="Editar datos del viaje"
-        @click="$emit('edit')"
-      >
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
-      </button>
+    <div class="relative flex items-start gap-1">
+      <form v-if="editing" class="min-w-0 flex-1" @submit.prevent="finishRename(true)">
+        <label class="sr-only" for="trip-name">Nombre del viaje</label>
+        <input
+          id="trip-name"
+          ref="field"
+          v-model="draft"
+          maxlength="80"
+          class="font-display w-full rounded-xl bg-white/12 px-2 py-0.5 -mx-2 text-[30px] leading-[1.08] font-bold text-white outline-none ring-2 ring-white/40"
+          @keydown.esc.prevent="finishRename(false)"
+          @blur="finishRename(true)"
+        />
+      </form>
+      <h2 v-else class="font-display min-w-0 flex-1 text-[30px] leading-[1.08] font-bold">{{ trip.name }}</h2>
+      <template v-if="!editing">
+        <button
+          class="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+          aria-label="Cambiar el nombre"
+          title="Cambiar el nombre"
+          @click="startRename"
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+        </button>
+        <button
+          class="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+          aria-label="Más opciones"
+          :aria-expanded="menu"
+          @click="menu = !menu"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
+        </button>
+      </template>
+      <div v-if="menu" class="fixed inset-0 z-[20]" @click="menu = false" />
+      <div v-if="menu" class="absolute top-11 right-0 z-[21] w-48 overflow-hidden rounded-2xl bg-white py-1.5 text-noche shadow-xl" role="menu">
+        <button role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="startRename">Cambiar el nombre</button>
+        <button role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold text-rose-600 hover:bg-rose-50" @click="(menu = false), emit('delete')">Borrar viaje</button>
+      </div>
     </div>
 
     <nav aria-label="Secciones del viaje" class="flex flex-col gap-1.5">

@@ -129,8 +129,9 @@ const tripFacts = computed(() => {
 // Editor state: either editing an existing pin, creating one, or editing a suggestion before accepting.
 type EditorCtx = { kind: 'pin'; pin: Pin } | { kind: 'new' } | { kind: 'suggestion'; message: Message; index: number }
 const editor = ref<{ ctx: EditorCtx; draft: PinDraft } | null>(null)
-const editingTrip = ref(false)
-const tripForm = ref<Partial<Trip>>({})
+/** Phone (and onboarding): the "⋯" sheet with rename and delete. */
+const tripMenu = ref<null | 'menu' | 'rename'>(null)
+const nameDraft = ref('')
 
 /** Before the day-by-day exists the screen is a conversation (+ route); afterwards it's the plan. */
 const planned = computed(() => !!trip.value?.freeform || !!generation.value?.running || pins.value.some((p) => p.day))
@@ -438,26 +439,17 @@ async function deleteEditingPin() {
   if (level.value === 'pin') router.back()
 }
 
-function openTripEditor() {
+function openTripMenu() {
   if (!trip.value) return
-  tripForm.value = { ...trip.value }
-  editingTrip.value = true
+  nameDraft.value = trip.value.name
+  tripMenu.value = 'menu'
 }
 
-// Moving the start keeps the length: the return date follows (change it after if the trip got longer or shorter).
-watch(
-  () => tripForm.value.startDate,
-  (start, old) => {
-    const end = tripForm.value.endDate
-    if (!editingTrip.value || !start || !old || !end || start === old) return
-    const shift = Date.parse(start) - Date.parse(old)
-    tripForm.value.endDate = new Date(Date.parse(end) + shift).toISOString().slice(0, 10)
-  },
-)
-
-async function saveTrip() {
-  editingTrip.value = false
-  await patchTrip(tripForm.value)
+async function renameTrip(name: string) {
+  const n = name.trim()
+  tripMenu.value = null
+  if (!n || n === trip.value?.name) return
+  await patchTrip({ name: n })
 }
 
 // ---- trip dates from the itinerary header
@@ -528,7 +520,7 @@ const editorTitle = computed(() =>
         :title="trip.name === 'Nuevo viaje' ? 'Contame del viaje' : trip.name"
         :subtitle="headerSubtitle"
         :steps="steps"
-        @edit="openTripEditor"
+        @edit="openTripMenu"
       />
       <TripBrief class="hidden w-[380px] flex-none md:flex" :trip="trip" :stops="stops" :steps="steps" :busy="sending" @generate="generate" />
 
@@ -562,7 +554,7 @@ const editorTitle = computed(() =>
     <!-- ============ Planned: trip → day → activity, one narrow column ============ -->
     <!-- Phone: one column (map, sheet, tabs). Desktop: the green trip sidebar + one white panel showing one thing at a time. -->
     <div v-else-if="trip" class="min-h-dvh bg-rocio pb-40 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
-      <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @edit="openTripEditor" />
+      <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @rename="renameTrip" @delete="deleteTrip" />
 
       <div ref="panel" class="md:min-w-0 md:flex-1 md:overflow-y-auto md:rounded-[28px] md:bg-white">
       <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">
@@ -608,7 +600,7 @@ const editorTitle = computed(() =>
               <RouterLink to="/plan" aria-label="Mis viajes" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
               </RouterLink>
-              <button aria-label="Editar viaje" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white" @click="openTripEditor">
+              <button aria-label="Más opciones" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white" @click="openTripMenu">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg>
               </button>
             </div>
@@ -774,26 +766,30 @@ const editorTitle = computed(() =>
       </template>
     </PinEditor>
 
-    <div v-if="editingTrip" class="fixed inset-0 z-[1000] flex items-end justify-center bg-slate-900/40 sm:items-center" @click.self="editingTrip = false">
-      <form class="w-full max-w-lg space-y-3 rounded-t-2xl bg-white p-4 shadow-xl sm:rounded-2xl" @submit.prevent="saveTrip">
-        <h2 class="text-lg font-semibold">Viaje</h2>
-        <input v-model="tripForm.name" class="input" placeholder="Nombre" required />
-        <input v-model="tripForm.destination" class="input" placeholder="Destino" />
-        <div class="grid grid-cols-2 gap-3">
-          <input v-model="tripForm.startDate" type="date" class="input" aria-label="Fecha de ida" />
-          <input v-model="tripForm.endDate" type="date" class="input" aria-label="Fecha de vuelta" />
-        </div>
-        <p class="text-[13px] text-slate-500">
-          <template v-if="trip?.datesTentative">Son fechas provisorias. Al poner las reales, todo lo que armaste se mueve con ellas.</template>
-          <template v-else>Si cambiás la ida, todo el plan se mueve con ella; lo que quede fuera de las fechas pasa a Ideas.</template>
-        </p>
-        <textarea v-model="tripForm.notes" class="input min-h-32" placeholder="Ficha: vuelos, viajeros, intereses, ritmo…" />
-        <div class="flex items-center gap-2">
-          <button class="btn-primary">Guardar</button>
-          <button type="button" class="btn" @click="editingTrip = false">Cancelar</button>
-          <button type="button" class="ml-auto text-sm text-rose-600 hover:underline" @click="deleteTrip">Borrar viaje</button>
-        </div>
-      </form>
+    <div v-if="tripMenu" class="fixed inset-0 z-[1000] flex items-end justify-center bg-noche/45 sm:items-center sm:p-4" @click.self="tripMenu = null">
+      <div class="flex w-full max-w-md flex-col gap-2 rounded-t-[28px] bg-white px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px]">
+        <template v-if="tripMenu === 'menu'">
+          <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold hover:bg-rocio" @click="tripMenu = 'rename'">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+            Cambiar el nombre
+          </button>
+          <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold text-rose-600 hover:bg-rose-50" @click="(tripMenu = null), deleteTrip()">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+            Borrar viaje
+          </button>
+        </template>
+        <form v-else class="flex flex-col gap-3 p-1" @submit.prevent="renameTrip(nameDraft)">
+          <label for="trip-rename" class="font-display text-[20px] font-bold">Nombre del viaje</label>
+          <input
+            id="trip-rename"
+            v-model="nameDraft"
+            maxlength="80"
+            class="h-12 rounded-2xl border-[1.5px] border-[#DCE3DF] px-4 text-[16px] outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
+            autofocus
+          />
+          <button class="btn-primary h-12 text-[15px]" :disabled="!nameDraft.trim()">Guardar</button>
+        </form>
+      </div>
     </div>
   </div>
 </template>
