@@ -562,7 +562,7 @@ const editorTitle = computed(() =>
     <!-- ============ Planned: trip → day → activity, one narrow column ============ -->
     <!-- Phone: one column (map, sheet, tabs). Desktop: the green trip sidebar + one white panel showing one thing at a time. -->
     <div v-else-if="trip" class="min-h-dvh bg-rocio pb-40 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
-      <TripSidebar class="hidden md:flex" :trip="trip" :facts="tripFacts" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @edit="openTripEditor" />
+      <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @edit="openTripEditor" />
 
       <div ref="panel" class="md:min-w-0 md:flex-1 md:overflow-y-auto md:rounded-[28px] md:bg-white">
       <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">

@@ -4,7 +4,7 @@ import TramoLogo from '@/components/TramoLogo.vue'
 import type { TripTab } from '@/components/TripTabs.vue'
 
 /** Desktop: the trip's identity and sections, in the same green panel used while creating it. */
-defineProps<{ trip: Trip; facts: string[]; active: TripTab; ideas: number }>()
+defineProps<{ trip: Trip; active: TripTab; ideas: number }>()
 defineEmits<{ copilot: []; edit: [] }>()
 
 const ITEMS: { key: TripTab; label: string; icon: string }[] = [
@@ -26,12 +26,15 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
       <RouterLink to="/plan" class="text-[13px] font-semibold text-white/90 hover:text-white">Mis viajes</RouterLink>
     </div>
 
-    <div class="group">
-      <div class="text-[13px] font-semibold text-mint-text">Tu viaje</div>
-      <h2 class="font-display mt-1 text-[34px] leading-[1.05] font-bold">{{ trip.name }}</h2>
-      <p class="mt-2.5 text-[14px] leading-relaxed text-mint-text">{{ facts.join(' · ') }}</p>
-      <button class="mt-2 text-[13px] font-bold text-white/80 underline-offset-2 hover:text-white hover:underline" @click="$emit('edit')">
-        Editar datos del viaje
+    <div class="flex items-start gap-2">
+      <h2 class="font-display min-w-0 flex-1 text-[28px] leading-[1.08] font-bold">{{ trip.name }}</h2>
+      <button
+        class="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+        aria-label="Editar datos del viaje"
+        title="Editar datos del viaje"
+        @click="$emit('edit')"
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
       </button>
     </div>
 
