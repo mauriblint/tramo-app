@@ -159,17 +159,9 @@ const cities = computed(() =>
 )
 
 const steps = computed(() => (trip.value ? profileSteps(trip.value, stops.value) : []))
-const quick = computed(() =>
-  !trip.value
-    ? []
-    : trip.value.freeform && !pins.value.some((p) => p.day)
-      ? ['Proponeme una ruta', 'Ideas para arrancar', '¿Qué conviene reservar ya?'].map((label) => ({ label }))
-      : planned.value
-      ? ['¿Qué días están muy cargados?', 'Sumá un buen restaurante por noche', '¿Qué conviene reservar ya?', 'Proponeme alternativas si llueve'].map(
-          (label) => ({ label }),
-        )
-      : routeReplies(stops.value),
-)
+// Fixed quick replies only help while setting the trip up (the route proposal); once you're planning,
+// the same four buttons every time are just noise — until the copilot can suggest its own.
+const quick = computed(() => (!trip.value || planned.value ? [] : routeReplies(stops.value)))
 const routeSummary = computed(() => steps.value.find((s) => s.key === 'ruta')?.value ?? '')
 const headerSubtitle = computed(() => {
   const t = trip.value
