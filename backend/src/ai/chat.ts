@@ -23,6 +23,7 @@ import {
   listPins,
   listStops,
   replaceStops,
+  setDaysCity,
   setTripDates,
   sortDay,
   updatePin,
@@ -217,14 +218,31 @@ const tools: OpenAI.Responses.Tool[] = [
     name: 'plan_days',
     strict: true,
     description:
-      'Arma (en segundo plano) SOLO estos días, alrededor de lo que ya tengan (no borra nada). Para días que todavía no tienen ciudad, pasá city: esa ciudad pasa a ser donde duermen esos días.',
+      'Arma (en segundo plano) las actividades de SOLO estos días. replace false = suma alrededor de lo que ya tengan; replace true = rehace lo generado (lo que el usuario marcó queda). Para días sin ciudad, pasá city.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['days', 'city', 'replace'],
+      properties: {
+        days: { type: 'array', items: { type: 'string' }, description: 'YYYY-MM-DD dentro del viaje' },
+        city: { type: ['string', 'null'], description: 'Ciudad para los días que no tienen; null si ya la tienen' },
+        replace: { type: 'boolean', description: 'true para rehacer esos días ("recalculá", "rehacé", "cambiá el plan")' },
+      },
+    },
+  },
+  {
+    type: 'function',
+    name: 'set_stay',
+    strict: true,
+    description:
+      'Define dónde duermen ciertos días, sin tocar las actividades: alarga, acorta o cambia una estadía ("2 días más en Tokio" = los 2 días siguientes a la estadía de Tokio). city null = esos días vuelven a "Por definir". Si además quiere actividades para esos días, después llamá plan_days.',
     parameters: {
       type: 'object',
       additionalProperties: false,
       required: ['days', 'city'],
       properties: {
         days: { type: 'array', items: { type: 'string' }, description: 'YYYY-MM-DD dentro del viaje' },
-        city: { type: ['string', 'null'], description: 'Ciudad para los días que no tienen; null si ya la tienen' },
+        city: { type: ['string', 'null'] },
       },
     },
   },
@@ -480,8 +498,11 @@ function buildInstructions(trip: Trip, mode: Mode): string {
 - Proponé mejoras cuando veas algo útil (día sobrecargado, lluvia, algo que requiere reserva), sin ser pesado.${trip.freeform ? `
 - Este viaje se arma DE A POCO: es normal que haya días vacíos y días sin ciudad. Nunca armes todo el viaje por tu cuenta.
 - "Armame el día 3", "del 5 al 7 en Kioto" → plan_days con esos días (y city si todavía no la tienen). Si no sabés la ciudad, preguntala.
-- Solo si pide una ruta completa: set_stops y, cuando la confirme, generate_itinerary.
-- Si para armar días te faltan quiénes viajan, ritmo o intereses, preguntalo en una línea (y guardalo con update_trip), pero no frenes: con lo que haya alcanza.` : ''}`,
+- Dónde duermen se define por días con set_stay: "2 días más en Tokio" = los 2 días siguientes al último día de Tokio; "4 días en Tokio" = Día 1 a Día 4 (4 fechas); "Kioto del 5 al 8". Pasá TODAS las fechas (YYYY-MM-DD) de esos días, mirando el Itinerario de abajo (Día N · fecha). Si pide además el plan ("y armalos", "recalculá"), plan_days con esos días (replace true si pide rehacer).
+- Preferencias de cómo quiere el viaje ("un barrio por día", "nada de museos") → sumalas a la ficha (update_trip brief) y aplicalas en lo que armes.
+- Si pide que le propongas una ruta: contala en 2-3 líneas (ciudades y días) y, si la acepta, un set_stay por ciudad con sus días. Los días que no cubras quedan "Por definir". No armes actividades salvo que lo pida.
+- Si para armar días te faltan quiénes viajan, ritmo o intereses, preguntalo en una línea (y guardalo con update_trip), pero no frenes: con lo que haya alcanza.` : ''}
+- NUNCA digas que hiciste, armaste, agregaste o anotaste algo si no llamaste la tool y devolvió ok. Si una tool falló, decí qué falta en una línea.`,
     parse: `Estás arrancando un viaje con el usuario. La app le hace las preguntas; vos solo interpretás lo que escribe.
 - Extraé TODO dato del mensaje (destino, fechas, ciudad de llegada y de regreso con su franja horaria, ciudad actual si el viaje ya empezó, quiénes viajan, edades de chicos, ritmo, intereses) y guardalo con update_trip (también brief = ficha en markdown con lo que dijo). Poné un name lindo apenas sepas destino.
 - Fechas: SIEMPRE completá startDate y endDate (YYYY-MM-DD) si el usuario da días y meses. "10/11" = día/mes. Sin año: elegí el año que deja el viaje más cerca de hoy (puede estar en curso: si hoy cae entre las fechas, es este año). No pidas confirmación.
@@ -577,12 +598,13 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
       return { ok: true }
     }
     case 'set_stops': {
-      // Don't propose a route blind: the backend enforces the minimum profile.
-      const missing = missingForRoute(ctx.trip)
+      // Don't propose a route blind: the backend enforces the minimum profile (a day-by-day trip doesn't need it).
+      const missing = ctx.trip.freeform ? [] : missingForRoute(ctx.trip)
       if (missing.length) {
         return { ok: false, missing, todo: `Antes de proponer la ruta preguntá (natural, de a 1-2): ${missing.join(', ')}.` }
       }
-      const problems = routeProblems(ctx.trip, args.stops)
+      // A day-by-day trip may cover only part of the trip with stays: the rest stays "Por definir".
+      const problems = routeProblems(ctx.trip, args.stops).filter((p) => !(ctx.trip.freeform && p.startsWith('Las noches suman') && p.includes('Sumá')))
       if (problems.length) return { ok: false, problems, todo: 'Corregí la ruta y llamá set_stops de nuevo.' }
       const { drafts, total, tripNights, warning } = layoutStops(ctx.trip, args.stops)
       const stops = replaceStops(tripId, drafts)
@@ -613,8 +635,14 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
       }
     }
     case 'plan_days': {
-      const st = startDayGeneration(tripId, Array.isArray(args.days) ? args.days : [], args.city)
+      const st = startDayGeneration(tripId, Array.isArray(args.days) ? args.days : [], args.city, args.replace === true)
       return { ok: true, started: true, days: st.totalDays }
+    }
+    case 'set_stay': {
+      const days = (Array.isArray(args.days) ? args.days : []).filter(isDate)
+      if (!days.length) return { ok: false, error: 'Sin días válidos (YYYY-MM-DD dentro del viaje)' }
+      const stops = setDaysCity(tripId, days, args.city ?? null)
+      return { ok: true, stays: stops.map((x) => `${x.city} ${x.startDate} → ${x.endDate} (${nightsOf(x)} noches)`) }
     }
     case 'generate_itinerary': {
       const st = startGeneration(tripId, args.cities)
@@ -723,8 +751,12 @@ const TOOLS_BY_MODE: Record<Mode, string[] | null> = {
   route: ['web_search', 'update_trip', 'set_stops', 'move_nights', 'generate_itinerary'],
   planned: null, // all
 }
-const toolsFor = (mode: Mode) =>
-  TOOLS_BY_MODE[mode] ? tools.filter((t) => TOOLS_BY_MODE[mode]!.includes(t.type === 'function' ? t.name : t.type)) : tools
+// A day-by-day trip has no whole-route tools: stays are set by days (set_stay) and only the asked days get built.
+const WHOLE_ROUTE = ['set_stops', 'move_nights', 'generate_itinerary']
+const toolsFor = (mode: Mode, trip: Trip) =>
+  (TOOLS_BY_MODE[mode] ? tools.filter((t) => TOOLS_BY_MODE[mode]!.includes(t.type === 'function' ? t.name : t.type)) : tools).filter(
+    (t) => !(trip.freeform && t.type === 'function' && WHOLE_ROUTE.includes(t.name)),
+  )
 
 export async function chat(tripId: string, text: string, opts: ChatOptions = {}): Promise<ChatResult> {
   let trip = getTrip(tripId)
@@ -742,7 +774,7 @@ export async function chat(tripId: string, text: string, opts: ChatOptions = {})
       model: config.openaiModel,
       // Rebuilt each call so follow-ups see the effect of previous tools.
       instructions: buildInstructions(ctx.trip, mode),
-      tools: toolsFor(mode),
+      tools: toolsFor(mode, ctx.trip),
       reasoning: REASONING,
       ...params,
     } as OpenAI.Responses.ResponseCreateParamsNonStreaming)

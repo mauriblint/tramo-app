@@ -283,10 +283,11 @@ export function startGeneration(tripId: string, cities?: string[] | null): Gener
 }
 
 /**
- * "Armar este día" / "armame del 3 al 5": generate only these days, around whatever they already have
- * (nothing is deleted). A day without a stop needs `city`, which becomes (or extends) its stop.
+ * "Armar este día" / "armame del 3 al 5": generate only these days, around whatever they already have.
+ * With `replace`, the generated items of those days ("idea") are redone; what the user marked stays.
+ * A day without a stop needs `city`, which becomes (or extends) its stop.
  */
-export function startDayGeneration(tripId: string, days: string[], city?: string | null): GenerationStatus {
+export function startDayGeneration(tripId: string, days: string[], city?: string | null, replace = false): GenerationStatus {
   if (isGenerating(tripId)) throw new HttpError(409, 'Ya se está armando el itinerario')
   let trip = getTrip(tripId)
   if (!trip) throw new HttpError(404, 'Trip no encontrado')
@@ -301,6 +302,7 @@ export function startDayGeneration(tripId: string, days: string[], city?: string
   }
   trip = getTrip(tripId)!
   const stops = listStops(tripId)
+  if (replace) for (const p of listPins(tripId)) if (p.day && wanted.includes(p.day) && p.status === 'idea') deletePin(p.id)
   const groups = new Map<string, { i: number; days: string[] }>()
   for (const d of wanted) {
     const s = stopOfDay(trip, stops, d)!

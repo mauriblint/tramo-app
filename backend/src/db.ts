@@ -501,39 +501,60 @@ export function replaceStops(tripId: string, stops: StopDraft[]): Stop[] {
 }
 
 /**
- * "Where are you this day": stops in a day-by-day trip are built from this. The same city as the night
- * before (or after) extends that stop; otherwise it's a new one-night stop. Only for days without a stop.
+ * "Where you sleep these days" (null = back to "Por definir"). Works on the day → city map, so it can extend,
+ * shorten, split or join stays: consecutive days in the same city are one stop. A stay keeps its lodging and
+ * day trips when it's the same city as before.
  */
-export function setDayCity(tripId: string, day: string, city: string): Stop[] {
-  const name = city.trim()
-  const same = (s: Stop) => s.city.trim().toLowerCase() === name.toLowerCase()
+export function setDaysCity(tripId: string, days: string[], city: string | null): Stop[] {
+  const trip = getTrip(tripId)
+  if (!trip?.startDate || !trip.endDate) return listStops(tripId)
   const stops = listStops(tripId)
-  const before = stops.find((s) => s.endDate === day && same(s))
-  const after = stops.find((s) => s.startDate === shiftDate(day, 1) && same(s))
-  if (before && after) {
-    // Fills the gap between two stays in the same city: they become one.
-    db.prepare('UPDATE stops SET end_date = ? WHERE id = ?').run(after.endDate, before.id)
-    db.prepare('DELETE FROM stops WHERE id = ?').run(after.id)
-  } else if (before) {
-    db.prepare('UPDATE stops SET end_date = ? WHERE id = ?').run(shiftDate(day, 1), before.id)
-  } else if (after) {
-    db.prepare('UPDATE stops SET start_date = ? WHERE id = ?').run(day, after.id)
-  } else {
-    db.prepare('INSERT INTO stops (id, trip_id, city, start_date, end_date, lodging, day_trips, position) VALUES (?, ?, ?, ?, ?, NULL, ?, 0)').run(
-      randomUUID(),
-      tripId,
-      name,
-      day,
-      shiftDate(day, 1),
-      '[]',
-    )
+  const all = daysBetweenDates(trip.startDate, trip.endDate)
+  const owner = new Map<string, Stop | null>(all.map((d) => [d, stopOfDay(trip, stops, d)]))
+  const name = city?.trim() || null
+  const key = (s: string) => s.trim().toLowerCase()
+
+  // The new map: a city per day (null = no stay), remembering which old stop each day came from.
+  const cityOf = new Map<string, string | null>(all.map((d) => [d, owner.get(d)?.city ?? null]))
+  for (const d of days) if (cityOf.has(d)) cityOf.set(d, name)
+
+  type Run = { city: string; days: string[]; from: Stop | null }
+  const runs: Run[] = []
+  for (const d of all) {
+    const c = cityOf.get(d)
+    if (!c) continue
+    const last = runs.at(-1)
+    const prevDay = last?.days.at(-1)
+    if (last && key(last.city) === key(c) && prevDay && shiftDate(prevDay, 1) === d) last.days.push(d)
+    else runs.push({ city: c, days: [d], from: null })
+    const old = owner.get(d)
+    const run = runs.at(-1)!
+    if (!run.from && old && key(old.city) === key(c)) run.from = old
   }
-  // Keep them in date order.
-  const sorted = listStops(tripId).sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))
-  const pos = db.prepare('UPDATE stops SET position = ? WHERE id = ?')
-  sorted.forEach((s, i) => pos.run(i, s.id))
+
+  const used = new Set<string>()
+  const ins = db.prepare('INSERT INTO stops (id, trip_id, city, start_date, end_date, lodging, day_trips, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+  db.transaction(() => {
+    db.prepare('DELETE FROM stops WHERE trip_id = ?').run(tripId)
+    runs.forEach((r, i) => {
+      const last = r.days.at(-1)!
+      // A stay runs to the morning after its last night; the trip's last day is the end itself.
+      const end = last === trip.endDate ? last : shiftDate(last, 1)
+      const keep = r.from && !used.has(r.from.id) ? r.from : null
+      if (keep) used.add(keep.id)
+      ins.run(keep?.id ?? randomUUID(), tripId, r.city, r.days[0], end, keep?.lodging ?? null, JSON.stringify(keep?.dayTrips ?? []), i)
+    })
+  })()
   touchTrip(tripId)
   return listStops(tripId)
+}
+
+export const setDayCity = (tripId: string, day: string, city: string) => setDaysCity(tripId, [day], city)
+
+function daysBetweenDates(start: string, end: string): string[] {
+  const out: string[] = []
+  for (let d = start; d <= end; d = shiftDate(d, 1)) out.push(d)
+  return out
 }
 
 /** The stop a day belongs to: from arrival up to the day before leaving; the trip's last day belongs to the stop that reaches it. */
