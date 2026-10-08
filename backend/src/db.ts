@@ -555,6 +555,36 @@ export function setDaysCity(tripId: string, days: string[], city: string | null)
 
 export const setDayCity = (tripId: string, day: string, city: string) => setDaysCity(tripId, [day], city)
 
+/**
+ * "Pasá los días 14 y 15 al final": move a block of days, plans and city, so it starts on `to`. The days it
+ * leaves behind become "Por definir"; plans already on the target days stay where they are.
+ */
+export function moveDays(tripId: string, days: string[], to: string): { moved: number; days: string[] } | { error: string } {
+  const trip = getTrip(tripId)
+  if (!trip?.startDate || !trip.endDate) return { error: 'El viaje no tiene fechas' }
+  const src = [...new Set(days)].sort()
+  if (!src.length) return { error: 'Sin días' }
+  const offset = daysFrom(src[0]!, to)
+  const target = src.map((d) => shiftDate(d, offset))
+  if (target.some((d) => d < trip.startDate! || d > trip.endDate!)) return { error: 'Los días quedarían fuera del viaje' }
+  if (!offset) return { moved: 0, days: target }
+
+  const stops = listStops(tripId)
+  const cityOf = new Map(src.map((d) => [d, stopOfDay(trip, stops, d)?.city ?? null]))
+  db.transaction(() => {
+    // Plans move with their day (both directions at once: the source days are known by date).
+    const pins = db.prepare(`SELECT id, day FROM pins WHERE trip_id = ? AND day IN (${src.map(() => '?').join(',')})`).all(tripId, ...src) as { id: string; day: string }[]
+    const upd = db.prepare('UPDATE pins SET day = ? WHERE id = ?')
+    for (const p of pins) upd.run(shiftDate(p.day, offset), p.id)
+  })()
+  // Then the cities: the days left behind first, then the new ones (a day may be both).
+  setDaysCity(tripId, src.filter((d) => !target.includes(d)), null)
+  const byCity = new Map<string | null, string[]>()
+  src.forEach((d, i) => byCity.set(cityOf.get(d) ?? null, [...(byCity.get(cityOf.get(d) ?? null) ?? []), target[i]!]))
+  for (const [city, ds] of byCity) setDaysCity(tripId, ds, city)
+  return { moved: offset, days: target }
+}
+
 function daysBetweenDates(start: string, end: string): string[] {
   const out: string[] = []
   for (let d = start; d <= end; d = shiftDate(d, 1)) out.push(d)

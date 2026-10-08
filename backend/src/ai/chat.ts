@@ -22,6 +22,7 @@ import {
   listMessages,
   listPins,
   listStops,
+  moveDays,
   replaceStops,
   setDaysCity,
   setTripDates,
@@ -231,6 +232,22 @@ const tools: OpenAI.Responses.Tool[] = [
           type: ['string', 'null'],
           description: 'Lo que el usuario quiere para estos días, con sus palabras y lo de la ficha que aplique ("un barrio distinto por día", "algo tranqui, llegamos cansados"). null si no dijo nada.',
         },
+      },
+    },
+  },
+  {
+    type: 'function',
+    name: 'move_days',
+    strict: true,
+    description:
+      'Mueve un bloque de días (sus planes y su ciudad) para que empiece en otra fecha: "pasá los días de Tokio al final", "corré los días 5 y 6 un día después". Los días que quedan atrás pasan a "Por definir". Los planes que ya hubiera en los días destino se quedan.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['days', 'to'],
+      properties: {
+        days: { type: 'array', items: { type: 'string' }, description: 'Fechas YYYY-MM-DD del bloque, en orden' },
+        to: { type: 'string', description: 'YYYY-MM-DD donde empieza el bloque ("al final" = que su último día caiga en el último día del viaje)' },
       },
     },
   },
@@ -504,6 +521,7 @@ function buildInstructions(trip: Trip, mode: Mode): string {
 - "Armame el día 3", "del 5 al 7 en Kioto" → plan_days con esos días (y city si todavía no la tienen). Si no sabés la ciudad, preguntala.
 - Dónde duermen se define por días con set_stay: "2 días más en Tokio" = los 2 días siguientes al último día de Tokio; "4 días en Tokio" = Día 1 a Día 4 (4 fechas); "Kioto del 5 al 8". Pasá TODAS las fechas (YYYY-MM-DD) de esos días, mirando el Itinerario de abajo (Día N · fecha). Si además dice qué quiere hacer esos días ("un barrio por día", "y armalos", "recalculá"), en el mismo turno plan_days con esos días y note = lo que pidió (replace true si pide rehacer, o si cambia el criterio de días ya armados de esa estadía). Si solo pidió sumar días, set_stay y ofrecé armarlos en una frase.
 - Un mensaje "Sobre el día N…" que describe varias noches ("son 4 noches en Tokio, un barrio por día") = set_stay desde ese día por esas noches y plan_days de todos esos días con note, de una.
+- "Mové / pasá / corré estos días a…" (con sus planes) → move_days. No rehagas los días para moverlos.
 - Preferencias de cómo quiere el viaje ("un barrio por día", "nada de museos") → sumalas a la ficha (update_trip brief) y aplicalas en lo que armes.
 - Si pide que le propongas una ruta: contala en 2-3 líneas (ciudades y días) y, si la acepta, un set_stay por ciudad con sus días. Los días que no cubras quedan "Por definir". No armes actividades salvo que lo pida.
 - Si para armar días te faltan quiénes viajan, ritmo o intereses, preguntalo en una línea (y guardalo con update_trip), pero no frenes: con lo que haya alcanza.` : ''}
@@ -642,6 +660,11 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
     case 'plan_days': {
       const st = startDayGeneration(tripId, Array.isArray(args.days) ? args.days : [], args.city, args.replace === true, args.note)
       return { ok: true, started: true, days: st.totalDays }
+    }
+    case 'move_days': {
+      const res = moveDays(tripId, (Array.isArray(args.days) ? args.days : []).filter(isDate), String(args.to ?? ''))
+      if ('error' in res) return { ok: false, error: res.error }
+      return { ok: true, ...res }
     }
     case 'set_stay': {
       const days = (Array.isArray(args.days) ? args.days : []).filter(isDate)
