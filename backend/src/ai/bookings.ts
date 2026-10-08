@@ -1,4 +1,5 @@
 import { config } from '../config.js'
+import { today } from '../today.js'
 import { BOOKING_KINDS, cleanBooking, type BookingInput } from '../bookings.js'
 import type { Trip } from '../db.js'
 import { HttpError, openai } from './client.js'
@@ -82,7 +83,7 @@ type DatesHint = Pick<Trip, 'startDate' | 'endDate'> | null
 const yearHint = (trip: DatesHint) =>
   trip?.startDate
     ? `Si falta el año, usá el del viaje (${trip.startDate} → ${trip.endDate ?? 'desconocido'}).`
-    : `Si falta el año, usá el de la próxima vez que caiga esa fecha (hoy es ${new Date().toISOString().slice(0, 10)}).`
+    : `Si falta el año, usá el de la próxima vez que caiga esa fecha (hoy es ${today()}).`
 
 const instructions = (trip: DatesHint) => `Extraé las reservas de este mail de confirmación (vuelos, trenes, buses u hoteles).
 

@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 
 import { config } from './config.js'
+import { today } from './today.js'
 
 export const PIN_TYPES = ['place', 'food', 'activity', 'route', 'idea', 'summary'] as const
 export const PIN_STATUSES = ['idea', 'want', 'must', 'done', 'discarded'] as const
@@ -635,7 +636,6 @@ export function clearMessages(tripId: string): void {
 /** Answer meaning "don't know yet": counts as answered but doesn't constrain the route. */
 export const UNKNOWN = 'a definir'
 
-const today = () => new Date().toISOString().slice(0, 10)
 
 /** The trip already started (and hasn't ended): plan from today, from where they are. */
 export function isOngoing(t: Trip): boolean {

@@ -1,3 +1,5 @@
+import { localToday } from './pinMeta'
+
 export type PinType = 'place' | 'food' | 'activity' | 'route' | 'idea' | 'summary'
 export type PinStatus = 'idea' | 'want' | 'must' | 'done' | 'discarded'
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening'
@@ -175,7 +177,8 @@ export interface Weather {
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${url}`, {
     method,
-    headers: body !== undefined ? { 'content-type': 'application/json' } : undefined,
+    // The server runs on UTC: "today" (trip in progress, "armame hoy") has to be the traveler's own date.
+    headers: { 'x-local-date': localToday(), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (res.status === 401) {

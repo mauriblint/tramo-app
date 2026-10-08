@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 
 import { config } from '../config.js'
+import { today, todayPlus } from '../today.js'
 import { HttpError, REASONING, addDays, daysBetween, isDate, openai } from './client.js'
 import { isGenerating, startDayGeneration, startGeneration } from './generate.js'
 import { FIRST_QUESTION, nextQuestion, type QuestionOption } from '../onboarding.js'
@@ -469,7 +470,7 @@ function buildContext(trip: Trip): string {
 Nombre: ${trip.name}
 Destino: ${trip.destination ?? 'sin definir'}
 Fechas: ${trip.startDate ?? '?'} → ${trip.endDate ?? '?'}${days.length ? ` (${days.length} días, ${days.length - 1} noches)` : ''}${trip.datesTentative ? `\nOJO: fechas PROVISORIAS (todavía no tiene pasajes${trip.whenHint ? `; dijo "${trip.whenHint}"` : ''}). Con el usuario hablá de "Día 1, Día 2…", no de fechas ni días de la semana. Cuando tenga fechas reales, update_trip con startDate/endDate: todo el plan se mueve solo.` : ''}
-Hoy: ${new Date().toISOString().slice(0, 10)}
+Hoy: ${today()}
 
 Perfil:
 - Viajan: ${trip.travelers ?? '?'}${trip.kids ? ` (chicos: ${trip.kids})` : ''}
@@ -743,12 +744,11 @@ const ROUTE_PARAMS = { reasoning: { effort: 'medium' } } as const
  */
 function fixYear(start: string | undefined, end: string | undefined, userText: string) {
   if (!start || !end || /\b20\d\d\b/.test(userText)) return {}
-  const thisYear = new Date().getUTCFullYear()
+  const thisYear = Number(today().slice(0, 4))
   const shift = Number(start.slice(0, 4)) - thisYear
   if (shift <= 0) return {}
   const back = (d: string) => `${Number(d.slice(0, 4)) - shift}${d.slice(4)}`
-  const today = new Date().toISOString().slice(0, 10)
-  return back(end) >= today ? { startDate: back(start), endDate: back(end) } : {}
+  return back(end) >= today() ? { startDate: back(start), endDate: back(end) } : {}
 }
 
 /** Keep the model's reaction only if it's short and doesn't narrate bookkeeping. */
@@ -882,7 +882,7 @@ export async function chat(tripId: string, text: string, opts: ChatOptions = {})
   return { userMessage, assistantMessage, changedPinIds: [...ctx.changed] }
 }
 
-const isoIn = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10)
+const isoIn = todayPlus
 
 /** Placeholder dates for a trip without tickets: from the month they named (or a month from now), as long as they said. */
 function ensureTentativeDates(trip: Trip, approxStart: string | null): Trip {

@@ -16,10 +16,13 @@ import {
 } from './auth.js'
 import { receiveEmail } from './inbound.js'
 import { router } from './routes.js'
+import { withLocalDate } from './today.js'
 
 const app = express()
 app.set('trust proxy', true)
 app.use(express.json({ limit: '2mb' }))
+// The traveler's own date for everything this request does (see today.ts).
+app.use((req, _res, next) => withLocalDate(req.get('x-local-date') ?? undefined, next))
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, llm: Boolean(config.openaiApiKey), model: config.openaiModel })
