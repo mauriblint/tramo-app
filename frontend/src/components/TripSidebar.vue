@@ -27,7 +27,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
     </div>
 
     <div class="flex items-start gap-2">
-      <h2 class="font-display min-w-0 flex-1 text-[28px] leading-[1.08] font-bold">{{ trip.name }}</h2>
+      <h2 class="font-display min-w-0 flex-1 text-[30px] leading-[1.08] font-bold">{{ trip.name }}</h2>
       <button
         class="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
         aria-label="Editar datos del viaje"
