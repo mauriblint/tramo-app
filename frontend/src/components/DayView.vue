@@ -60,7 +60,7 @@ const groups = computed(() => {
 const hotel = computed(() => hotelForNight(props.bookings, props.day))
 
 // "Armar este día": the generator fills it around what's there; a day without a stop asks for the city first.
-const building = computed(() => !!props.generation?.running && !props.generation.doneDays.includes(props.day))
+const building = computed(() => !!props.generation?.running && props.generation.days.includes(props.day) && !props.generation.doneDays.includes(props.day))
 const cityInput = ref('')
 const knownCities = computed(() => [...new Set(props.stops.map((s) => s.city))])
 const prevCity = computed(() => {

@@ -54,7 +54,8 @@ const byDay = computed(() => {
 })
 
 const generating = computed(() => !!props.generation?.running)
-const pending = (d: string) => generating.value && !props.generation!.doneDays.includes(d) && !byDay.value.get(d)?.length
+// Only the days being written wait for content (a day can already show what it had while more arrives).
+const pending = (d: string) => generating.value && props.generation!.days.includes(d) && !props.generation!.doneDays.includes(d)
 
 /** The transport you booked to get to the next city (on the day you leave), if any. */
 function transferTo(next: Stop) {
@@ -138,10 +139,14 @@ function card(d: string, stop: Stop | null) {
             >Excursión a {{ card(d, sec.stop).dayTrip }}</span>
             <p class="line-clamp-2 text-[16px] leading-snug font-extrabold">{{ card(d, sec.stop).title }}</p>
             <p v-if="card(d, sec.stop).summary" class="mt-0.5 truncate text-[14px] text-slate-500">{{ card(d, sec.stop).summary }}</p>
+            <span v-if="pending(d)" class="mt-1 inline-flex items-center gap-1.5 text-[12px] font-extrabold text-brand-dark">
+              <span class="h-2 w-2 animate-pulse rounded-full bg-brand" />Sumando planes…
+            </span>
           </template>
-          <div v-else-if="pending(d)" class="flex flex-col gap-2 py-1">
-            <span class="h-3.5 w-3/4 animate-pulse rounded-full bg-slate-100" />
-            <span class="h-3 w-1/2 animate-pulse rounded-full bg-slate-100" />
+          <div v-else-if="pending(d)" class="flex flex-col gap-2 py-0.5" aria-busy="true">
+            <span class="text-[13px] font-extrabold text-brand-dark">Armando el día…</span>
+            <span class="h-3.5 w-3/4 animate-pulse rounded-full bg-[#D3E5DA]" />
+            <span class="h-3 w-1/2 animate-pulse rounded-full bg-[#D3E5DA]" />
           </div>
           <p v-else class="text-[15px] text-slate-400">Día libre</p>
           <div v-if="card(d, sec.stop).events.length" class="mt-1.5 flex flex-wrap gap-1.5">

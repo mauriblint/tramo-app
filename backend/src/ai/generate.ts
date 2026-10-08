@@ -22,6 +22,8 @@ import { HttpError, REASONING, daysBetween, openai } from './client.js'
  */
 
 interface Job {
+  /** The days being written, so the UI can show them as pending (and only them). */
+  days: string[]
   totalDays: number
   doneDays: Set<string>
   pendingCities: Set<string>
@@ -32,6 +34,7 @@ const jobs = new Map<string, Job>()
 
 export interface GenerationStatus {
   running: boolean
+  days: string[]
   totalDays: number
   doneDays: string[]
   pendingCities: string[]
@@ -43,6 +46,7 @@ export function generationStatus(tripId: string): GenerationStatus | null {
   if (!j) return null
   return {
     running: j.pendingCities.size > 0,
+    days: j.days,
     totalDays: j.totalDays,
     doneDays: [...j.doneDays],
     pendingCities: listStops(tripId)
@@ -262,6 +266,7 @@ export function startGeneration(tripId: string, cities?: string[] | null): Gener
   }
 
   const job: Job = {
+    days: [...regenDays].sort(),
     totalDays: regenDays.size,
     doneDays: new Set(),
     pendingCities: new Set(targets.map((t) => t.s.id)),
@@ -312,7 +317,7 @@ export function startDayGeneration(tripId: string, days: string[], city?: string
     groups.set(s.id, g)
   }
 
-  const job: Job = { totalDays: wanted.length, doneDays: new Set(), pendingCities: new Set(groups.keys()), failedCities: [] }
+  const job: Job = { days: wanted, totalDays: wanted.length, doneDays: new Set(), pendingCities: new Set(groups.keys()), failedCities: [] }
   jobs.set(tripId, job)
   for (const [id, { i, days: ds }] of groups) {
     generateStop(trip, stops, i, ds, job, note)

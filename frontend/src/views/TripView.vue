@@ -224,6 +224,23 @@ async function poll() {
 }
 onBeforeUnmount(() => clearTimeout(pollTimer))
 
+let refreshing = false
+async function refreshLive() {
+  if (refreshing) return
+  refreshing = true
+  try {
+    const data = await api.getTrip(props.id)
+    if (!sending.value) return
+    stops.value = data.stops
+    pins.value = data.pins
+    generation.value = data.generation
+  } catch {
+    // the answer will bring it anyway
+  } finally {
+    refreshing = false
+  }
+}
+
 async function generate() {
   const res = await run(() => api.generate(props.id))
   if (!res) return
@@ -270,7 +287,10 @@ async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
 async function send(text: string, patch?: Partial<Trip>, structured = false, context: string | null = null) {
   sending.value = true
   pendingText.value = text
+  // The copilot may start building days before it finishes answering: show the stays and skeletons as they happen.
+  const live = setInterval(refreshLive, 1500)
   const res = await run(() => api.chat(props.id, text, patch, structured, context))
+  clearInterval(live)
   sending.value = false
   if (!res) {
     failed.value++

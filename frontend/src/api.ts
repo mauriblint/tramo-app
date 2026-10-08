@@ -126,6 +126,8 @@ export interface Question {
 
 export interface GenerationStatus {
   running: boolean
+  /** The days being written right now. */
+  days: string[]
   totalDays: number
   doneDays: string[]
   pendingCities: string[]
