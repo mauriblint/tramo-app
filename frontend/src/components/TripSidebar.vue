@@ -63,14 +63,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
       </form>
       <h2 v-else class="font-display min-w-0 flex-1 text-[30px] leading-[1.08] font-bold">{{ trip.name }}</h2>
       <template v-if="!editing">
-        <button
-          class="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
-          aria-label="Cambiar el nombre"
-          title="Cambiar el nombre"
-          @click="startRename"
-        >
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
-        </button>
+        <!-- One button, like on the phone: rename and delete live in its menu -->
         <button
           class="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
           aria-label="Más opciones"
