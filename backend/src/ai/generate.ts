@@ -146,7 +146,7 @@ function dayStreamParser(onDay: (d: GenDay) => void) {
   }
 }
 
-function stopPrompt(trip: Trip, stops: Stop[], i: number, days: string[]): string {
+function stopPrompt(trip: Trip, stops: Stop[], i: number, days: string[], note?: string | null): string {
   const stop = stops[i]!
   const prev = stops[i - 1]
   const next = stops[i + 1]
@@ -186,6 +186,7 @@ ${trip.datesTentative ? '- Las fechas son provisorias (todavía no hay pasajes):
 ${keep.length ? `Ya está en el plan (no lo repitas; contalo dentro de los ítems del día y planificá alrededor):\n${keep.map((p) => `- ${p.day} ${p.timeOfDay ?? ''}: ${p.title}`).join('\n')}` : ''}
 ${wanted.length ? `El usuario QUIERE hacer esto acá, incluilo:\n${wanted.map((p) => `- ${p.title}`).join('\n')}` : ''}
 ${ideas.length ? `Ideas guardadas por el usuario (usalas si encajan):\n${ideas.map((p) => `- ${p.title}`).join('\n')}` : ''}
+${note?.trim() ? `Lo que el usuario pidió para estos días (respetalo por sobre todo lo demás): ${note.trim()}` : ''}
 
 Reglas:
 - Ítems por día según el ritmo, contando lo que ya está en el plan: tranqui 2, intermedio 3, intenso 3-4. Con chicos: actividades aptas para su edad, pausas y nada de jornadas eternas; agrupá por cercanía geográfica; no repitas lugares entre días.
@@ -193,7 +194,7 @@ Reglas:
 - Escribí en el idioma de la ficha. note: 1-2 frases útiles.`
 }
 
-async function generateStop(trip: Trip, stops: Stop[], i: number, days: string[], job: Job) {
+async function generateStop(trip: Trip, stops: Stop[], i: number, days: string[], job: Job, note?: string | null) {
   const stop = stops[i]!
   const allowed = new Set(days)
   const t0 = Date.now()
@@ -201,7 +202,7 @@ async function generateStop(trip: Trip, stops: Stop[], i: number, days: string[]
   const stream = await openai().responses.create({
     model: config.openaiGenModel,
     reasoning: REASONING,
-    instructions: stopPrompt(trip, stops, i, days),
+    instructions: stopPrompt(trip, stops, i, days, note),
     input: `Generá los días ${days[0]} a ${days.at(-1)} en ${stop.city}.`,
     text: { format: { type: 'json_schema', name: 'stop_days', strict: true, schema: daySchema } },
     stream: true,
@@ -287,7 +288,7 @@ export function startGeneration(tripId: string, cities?: string[] | null): Gener
  * With `replace`, the generated items of those days ("idea") are redone; what the user marked stays.
  * A day without a stop needs `city`, which becomes (or extends) its stop.
  */
-export function startDayGeneration(tripId: string, days: string[], city?: string | null, replace = false): GenerationStatus {
+export function startDayGeneration(tripId: string, days: string[], city?: string | null, replace = false, note?: string | null): GenerationStatus {
   if (isGenerating(tripId)) throw new HttpError(409, 'Ya se está armando el itinerario')
   let trip = getTrip(tripId)
   if (!trip) throw new HttpError(404, 'Trip no encontrado')
@@ -314,7 +315,7 @@ export function startDayGeneration(tripId: string, days: string[], city?: string
   const job: Job = { totalDays: wanted.length, doneDays: new Set(), pendingCities: new Set(groups.keys()), failedCities: [] }
   jobs.set(tripId, job)
   for (const [id, { i, days: ds }] of groups) {
-    generateStop(trip, stops, i, ds, job)
+    generateStop(trip, stops, i, ds, job, note)
       .catch((err) => {
         console.error(`[gen] ${stops[i]!.city} (días) falló`, err)
         job.failedCities.push(stops[i]!.city)

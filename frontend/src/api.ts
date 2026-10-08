@@ -227,7 +227,7 @@ export const api = {
   geo: (q: string) => req<{ lat: number; lng: number } | null>('GET', `/geo?${new URLSearchParams({ q })}`),
   deletePin: (tripId: string, id: string) => req<void>('DELETE', `/trips/${tripId}/pins/${id}`),
 
-  chat: (tripId: string, text: string, patch?: Partial<Trip>, structured = false) =>
+  chat: (tripId: string, text: string, patch?: Partial<Trip>, structured = false, context?: string | null) =>
     req<{
       userMessage: Message
       assistantMessage: Message
@@ -237,7 +237,7 @@ export const api = {
       changedPinIds: string[]
       generation: GenerationStatus | null
       question: Question | null
-    }>('POST', `/trips/${tripId}/chat`, { text, patch, structured }),
+    }>('POST', `/trips/${tripId}/chat`, { text, patch, structured, context: context ?? undefined }),
   clearChat: (tripId: string) => req<void>('DELETE', `/trips/${tripId}/messages`),
   extract: (tripId: string, messageId: string) => req<Message>('POST', `/trips/${tripId}/messages/${messageId}/extract`),
   acceptSuggestion: (tripId: string, messageId: string, index: number, override?: Partial<PinDraft>) =>

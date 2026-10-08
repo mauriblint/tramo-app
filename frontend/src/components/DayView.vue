@@ -18,8 +18,10 @@ const props = defineProps<{
   day: string
   weather: Record<string, WeatherDay>
   generation: GenerationStatus | null
+  /** The copilot is answering (a description sent from here goes through it). */
+  sending?: boolean
 }>()
-const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null] }>()
+const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null]; ask: [string] }>()
 
 const allDays = computed(() => daysBetween(props.trip.startDate, props.trip.endDate))
 const index = computed(() => allDays.value.indexOf(props.day))
@@ -70,8 +72,21 @@ watch(
   () => (cityInput.value = prevCity.value || (props.day === localToday() ? (props.trip.currentCity ?? '') : '')),
   { immediate: true },
 )
+// What you'd like for the day (or the stay): "4 noches acá, un barrio por día". With it, the copilot takes over:
+// it can set the stay and build several days at once; without it, the day is built straight away.
+const wish = ref('')
+watch(
+  () => props.day,
+  () => (wish.value = ''),
+)
 function build() {
   const city = stop.value ? null : cityInput.value.trim()
+  const text = wish.value.trim()
+  if (text) {
+    emit('ask', city ? `En ${city}. ${text}` : text)
+    wish.value = ''
+    return
+  }
   if (!stop.value && !city) return
   emit('generate', props.day, city)
 }
@@ -232,11 +247,11 @@ function firstSentence(s: string) {
         <span class="h-3 w-1/2 animate-pulse rounded-full bg-white" />
       </div>
 
-      <!-- Empty day: build it (asking where, if the day has no city yet) -->
+      <!-- Empty day: build it, or describe what you want (the copilot can then build the whole stay) -->
       <form v-else-if="!dayPins.length" class="mt-4 flex flex-col gap-3 rounded-[22px] bg-white px-4 py-4 md:bg-rocio" @submit.prevent="build">
         <p class="text-[15px] text-slate-600">
           Nada planeado todavía.
-          <template v-if="stop">Te armo el día en <b class="text-noche">{{ stop.city }}</b>, o agregá algo vos.</template>
+          <template v-if="stop">Te armo el día en <b class="text-noche">{{ stop.city }}</b>, o contame qué querés hacer.</template>
           <template v-else>¿Dónde vas a estar este día?</template>
         </p>
         <template v-if="!stop">
@@ -252,9 +267,18 @@ function firstSentence(s: string) {
             <option v-for="c in knownCities" :key="c" :value="c" />
           </datalist>
         </template>
-        <button class="btn-primary h-12 text-[15px]" :disabled="!!generation?.running || (!stop && !cityInput.trim())">
+        <label class="sr-only" :for="`wish-${day}`">Qué querés hacer</label>
+        <textarea
+          :id="`wish-${day}`"
+          v-model="wish"
+          rows="2"
+          :placeholder="stop ? `Opcional: «son 4 noches en ${stop.city}, un barrio por día», «algo tranqui, llegamos cansados»…` : 'Opcional: «3 noches, templos y comida», «día de compras»…'"
+          class="resize-none rounded-2xl border-[1.5px] border-[#DCE3DF] bg-white px-4 py-3 text-[15px] leading-relaxed outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
+          @keydown.enter.exact.prevent="build"
+        />
+        <button class="btn-primary h-12 text-[15px]" :disabled="sending || !!generation?.running || (!stop && !cityInput.trim() && !wish.trim())">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9.5l-4.2 1.9L12 16l-1.8-4.6L6 9.5l4.2-1.9z" /><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" /></svg>
-          Armar este día
+          {{ sending ? 'Pensando…' : 'Armar este día' }}
         </button>
       </form>
 

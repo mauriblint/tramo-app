@@ -209,7 +209,8 @@ router.post('/trips/:tripId/chat', async (req, res) => {
   const text = String(req.body?.text ?? '').trim()
   if (!text) throw new HttpError(400, 'Mensaje vacío')
   const patch = req.body?.patch && typeof req.body.patch === 'object' ? tripFields(req.body.patch) : undefined
-  const result = await chat(trip.id, text, { patch, structured: req.body?.structured === true })
+  const context = typeof req.body?.context === 'string' ? req.body.context.trim().slice(0, 300) || undefined : undefined
+  const result = await chat(trip.id, text, { patch, structured: req.body?.structured === true, context })
   res.json({
     ...result,
     trip: repo.getTrip(trip.id),

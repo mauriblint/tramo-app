@@ -95,17 +95,23 @@ const datesLabel = computed(() => {
 })
 
 // The copilot gets the current day or activity as context, so "cambiá esto" knows what "esto" is.
+// `copilotContext` is what the dock shows; `copilotRef` adds the date the model needs to map "este día".
+const dayLabel = (d: string) => (trip.value?.datesTentative ? `el Día ${days.value.indexOf(d) + 1}` : `el día ${days.value.indexOf(d) + 1} (${fmtDay(d)})`)
 const copilotContext = computed(() => {
-  if (level.value === 'day' && props.item) return `el día ${days.value.indexOf(props.item) + 1} (${fmtDay(props.item)})`
+  if (level.value === 'day' && props.item) return dayLabel(props.item)
   const p = currentPin.value
-  if (p) return p.day ? `“${p.title}” (día ${days.value.indexOf(p.day) + 1}, ${fmtDay(p.day)})` : `“${p.title}”`
+  if (p) return p.day ? `“${p.title}” (${dayLabel(p.day)})` : `“${p.title}”`
   return null
+})
+const copilotRef = computed(() => {
+  const d = level.value === 'day' ? props.item : currentPin.value?.day
+  return copilotContext.value && d ? `${copilotContext.value} [${d}]` : copilotContext.value
 })
 const copilotPlaceholder = computed(() =>
   level.value === 'day' ? 'Cambiá algo de este día…' : level.value === 'pin' ? 'Preguntá algo de este lugar…' : 'Pedile cambios al copiloto…',
 )
 function sendFromCopilot(text: string, patch?: Partial<Trip>, structured?: boolean) {
-  send(copilotContext.value && !structured ? `Sobre ${copilotContext.value}: ${text}` : text, patch, structured)
+  send(text, patch, structured, structured ? null : copilotRef.value)
 }
 const tripFacts = computed(() => {
   const t = trip.value
@@ -234,6 +240,12 @@ async function buildDays(day: string, city: string | null) {
   startPolling()
 }
 
+/** A description typed in an empty day goes to the copilot, which knows the day (it opens so you see the answer). */
+function askAboutDay(text: string) {
+  dock.value?.open('half')
+  sendFromCopilot(text)
+}
+
 /** Short confirmation at the top (e.g. after moving the dates). */
 const notice = ref('')
 function notify(text: string) {
@@ -255,10 +267,10 @@ async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-async function send(text: string, patch?: Partial<Trip>, structured = false) {
+async function send(text: string, patch?: Partial<Trip>, structured = false, context: string | null = null) {
   sending.value = true
   pendingText.value = text
-  const res = await run(() => api.chat(props.id, text, patch, structured))
+  const res = await run(() => api.chat(props.id, text, patch, structured, context))
   sending.value = false
   if (!res) {
     failed.value++
@@ -622,9 +634,11 @@ const editorTitle = computed(() =>
           :day="item!"
           :weather="weather"
           :generation="generation"
+          :sending="sending"
           @located="(p, np) => Object.assign(p, np)"
           @add="openNew"
           @generate="buildDays"
+          @ask="askAboutDay"
         />
 
         <PinDetail

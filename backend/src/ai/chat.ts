@@ -222,11 +222,15 @@ const tools: OpenAI.Responses.Tool[] = [
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['days', 'city', 'replace'],
+      required: ['days', 'city', 'replace', 'note'],
       properties: {
         days: { type: 'array', items: { type: 'string' }, description: 'YYYY-MM-DD dentro del viaje' },
         city: { type: ['string', 'null'], description: 'Ciudad para los días que no tienen; null si ya la tienen' },
         replace: { type: 'boolean', description: 'true para rehacer esos días ("recalculá", "rehacé", "cambiá el plan")' },
+        note: {
+          type: ['string', 'null'],
+          description: 'Lo que el usuario quiere para estos días, con sus palabras y lo de la ficha que aplique ("un barrio distinto por día", "algo tranqui, llegamos cansados"). null si no dijo nada.',
+        },
       },
     },
   },
@@ -498,7 +502,8 @@ function buildInstructions(trip: Trip, mode: Mode): string {
 - Proponé mejoras cuando veas algo útil (día sobrecargado, lluvia, algo que requiere reserva), sin ser pesado.${trip.freeform ? `
 - Este viaje se arma DE A POCO: es normal que haya días vacíos y días sin ciudad. Nunca armes todo el viaje por tu cuenta.
 - "Armame el día 3", "del 5 al 7 en Kioto" → plan_days con esos días (y city si todavía no la tienen). Si no sabés la ciudad, preguntala.
-- Dónde duermen se define por días con set_stay: "2 días más en Tokio" = los 2 días siguientes al último día de Tokio; "4 días en Tokio" = Día 1 a Día 4 (4 fechas); "Kioto del 5 al 8". Pasá TODAS las fechas (YYYY-MM-DD) de esos días, mirando el Itinerario de abajo (Día N · fecha). Si pide además el plan ("y armalos", "recalculá"), plan_days con esos días (replace true si pide rehacer).
+- Dónde duermen se define por días con set_stay: "2 días más en Tokio" = los 2 días siguientes al último día de Tokio; "4 días en Tokio" = Día 1 a Día 4 (4 fechas); "Kioto del 5 al 8". Pasá TODAS las fechas (YYYY-MM-DD) de esos días, mirando el Itinerario de abajo (Día N · fecha). Si además dice qué quiere hacer esos días ("un barrio por día", "y armalos", "recalculá"), en el mismo turno plan_days con esos días y note = lo que pidió (replace true si pide rehacer, o si cambia el criterio de días ya armados de esa estadía). Si solo pidió sumar días, set_stay y ofrecé armarlos en una frase.
+- Un mensaje "Sobre el día N…" que describe varias noches ("son 4 noches en Tokio, un barrio por día") = set_stay desde ese día por esas noches y plan_days de todos esos días con note, de una.
 - Preferencias de cómo quiere el viaje ("un barrio por día", "nada de museos") → sumalas a la ficha (update_trip brief) y aplicalas en lo que armes.
 - Si pide que le propongas una ruta: contala en 2-3 líneas (ciudades y días) y, si la acepta, un set_stay por ciudad con sus días. Los días que no cubras quedan "Por definir". No armes actividades salvo que lo pida.
 - Si para armar días te faltan quiénes viajan, ritmo o intereses, preguntalo en una línea (y guardalo con update_trip), pero no frenes: con lo que haya alcanza.` : ''}
@@ -635,7 +640,7 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
       }
     }
     case 'plan_days': {
-      const st = startDayGeneration(tripId, Array.isArray(args.days) ? args.days : [], args.city, args.replace === true)
+      const st = startDayGeneration(tripId, Array.isArray(args.days) ? args.days : [], args.city, args.replace === true, args.note)
       return { ok: true, started: true, days: st.totalDays }
     }
     case 'set_stay': {
@@ -744,6 +749,8 @@ export interface ChatOptions {
   patch?: Partial<Trip>
   /** The text is exactly a button label: nothing for the model to interpret. */
   structured?: boolean
+  /** What the user is looking at ("el Día 3 [2026-11-08]"): told to the model, not shown in the chat. */
+  context?: string
 }
 
 const TOOLS_BY_MODE: Record<Mode, string[] | null> = {
@@ -765,7 +772,7 @@ export async function chat(tripId: string, text: string, opts: ChatOptions = {})
   if (opts.patch && Object.keys(opts.patch).length) trip = ensureTentativeDates(updateTrip(tripId, opts.patch) ?? trip, null)
 
   const history = listMessages(tripId, HISTORY_LIMIT)
-  const userInput = { role: 'user', content: text } as const
+  const userInput = { role: 'user', content: opts.context ? `(El usuario está viendo ${opts.context}.)\n${text}` : text } as const
   const ctx: ToolCtx = { userText: text, trip, suggestions: [], changed: new Set(), touchedDays: new Set() }
 
   const call = async (mode: Mode, params: Partial<OpenAI.Responses.ResponseCreateParamsNonStreaming>) => {
