@@ -39,7 +39,7 @@ export function useTripWeather(trip: Ref<Trip | null>, stops: Ref<Stop[]>) {
     for (const s of stops.value) {
       if (!s.startDate) continue
       try {
-        const geo = await geocodeCity(s.city, trip.value?.destination)
+        const geo = await geocodeCity(s.city, trip.value)
         if (!geo) continue
         const w = await loadWeather(geo.lat, geo.lng, s.startDate, s.endDate)
         for (const d of w.days) byDay.value = { ...byDay.value, [d.date]: d }

@@ -132,6 +132,7 @@ const tools: OpenAI.Responses.Tool[] = [
         'lengthDays',
         'whenHint',
         'approxStartDate',
+        'countryCodes',
       ],
       properties: {
         travelers: { type: ['string', 'null'], enum: [...TRAVELERS, null], description: 'Quiénes viajan' },
@@ -155,6 +156,12 @@ const tools: OpenAI.Responses.Tool[] = [
         },
         name: { type: ['string', 'null'], description: 'Nombre corto y lindo, ej. "Japón otoño 2026"' },
         destination: { type: ['string', 'null'], description: 'País/región y ciudades clave' },
+        countryCodes: {
+          type: ['array', 'null'],
+          items: { type: 'string' },
+          description:
+            'Siempre que guardes o cambies destination: códigos ISO 3166-1 alfa-2 en minúscula de los países del viaje (Japón → ["jp"], Italia y España → ["it","es"]). Continente o región sin países concretos ("Europa", "sudeste asiático") → []. null = no cambiar.',
+        },
         startDate: { ...DATE, description: 'Primer día del viaje (llegada)' },
         endDate: { ...DATE, description: 'Último día del viaje (salida)' },
         noFixedDates: {
@@ -579,6 +586,8 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
       const patch: Partial<Trip> = {}
       if (args.name) patch.name = args.name
       if (args.destination) patch.destination = args.destination
+      if (Array.isArray(args.countryCodes))
+        patch.countryCodes = [...new Set<string>(args.countryCodes.map((c: string) => String(c).trim().toLowerCase()).filter((c: string) => /^[a-z]{2}$/.test(c)))]
       if (isDate(args.startDate)) patch.startDate = args.startDate
       if (isDate(args.endDate)) patch.endDate = args.endDate
       Object.assign(patch, fixYear(patch.startDate ?? undefined, patch.endDate ?? undefined, ctx.userText))

@@ -53,7 +53,7 @@ async function locate() {
       // fine without a map
     }
   }
-  if (!points.value.length && p.city) center.value = await geocodeCity(p.city, props.trip.destination)
+  if (!points.value.length && p.city) center.value = await geocodeCity(p.city, props.trip)
 }
 onMounted(locate)
 watch(() => props.pin.id, locate)

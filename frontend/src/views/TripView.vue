@@ -603,7 +603,7 @@ const editorTitle = computed(() =>
           </div>
 
           <div v-if="tab === 'itinerario' || !isDesktop" class="relative h-[300px] md:h-[260px] md:overflow-hidden md:rounded-[24px]">
-            <TripCover :stops="stops" :destination="trip.destination" />
+            <TripCover :stops="stops" :destination="trip.destination" :country-codes="trip.countryCodes" />
             <div class="absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3 md:hidden">
               <RouterLink to="/plan" aria-label="Mis viajes" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0E1F18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>

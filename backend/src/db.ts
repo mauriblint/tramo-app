@@ -50,6 +50,8 @@ export interface Trip {
   lengthDays: number | null
   /** Rough "when" as the user said it ("julio", "enero 2027"), shown while the dates are tentative. */
   whenHint: string | null
+  /** ISO country codes of the destination (["jp"], ["it", "es"]); empty for a continent/region or unknown. Used to scope map searches. */
+  countryCodes: string[]
   userId: string | null
   createdAt: string
   updatedAt: string
@@ -204,6 +206,7 @@ for (const [col, def] of [
   ['dates_tentative', 'INTEGER NOT NULL DEFAULT 0'],
   ['length_days', 'INTEGER'],
   ['when_hint', 'TEXT'],
+  ['country_codes', "TEXT NOT NULL DEFAULT '[]'"],
 ] as const) {
   if (!tripCols.has(col)) db.exec(`ALTER TABLE trips ADD COLUMN ${col} ${def}`)
 }
@@ -242,6 +245,7 @@ const toTrip = (r: Row): Trip => ({
   datesTentative: !!r.dates_tentative,
   lengthDays: r.length_days ?? null,
   whenHint: r.when_hint ?? null,
+  countryCodes: JSON.parse(r.country_codes ?? '[]'),
   userId: r.user_id ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -307,7 +311,7 @@ export function updateTrip(id: string, input: Partial<Trip>): Trip | null {
   db.prepare(
     `UPDATE trips SET name = ?, destination = ?, start_date = ?, end_date = ?, notes = ?, travelers = ?, kids = ?, pace = ?,
        interests = ?, arrival_city = ?, arrival_time = ?, departure_city = ?, departure_time = ?, current_city = ?,
-       freeform = ?, dates_tentative = ?, length_days = ?, when_hint = ?, updated_at = ?
+       freeform = ?, dates_tentative = ?, length_days = ?, when_hint = ?, country_codes = ?, updated_at = ?
      WHERE id = ?`,
   ).run(
     next.name,
@@ -328,6 +332,7 @@ export function updateTrip(id: string, input: Partial<Trip>): Trip | null {
     next.datesTentative ? 1 : 0,
     next.lengthDays ?? null,
     next.whenHint ?? null,
+    JSON.stringify(next.countryCodes ?? []),
     now(),
     id,
   )

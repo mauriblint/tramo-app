@@ -8,7 +8,7 @@ import type { Stop } from '@/api'
 import { geocodeCity } from '@/geo'
 
 /** Cover map: the route's stops as numbered pins joined by a dashed line, in visiting order. */
-const props = defineProps<{ stops: Stop[]; destination: string | null }>()
+const props = defineProps<{ stops: Stop[]; destination: string | null; countryCodes?: string[] }>()
 
 const el = ref<HTMLElement>()
 let map: L.Map | undefined
@@ -16,7 +16,7 @@ let layer: L.LayerGroup | undefined
 
 async function draw() {
   if (!map || !layer) return
-  const points = await Promise.all(props.stops.map((s) => geocodeCity(s.city, props.destination)))
+  const points = await Promise.all(props.stops.map((s) => geocodeCity(s.city, { destination: props.destination, countryCodes: props.countryCodes })))
   layer.clearLayers()
 
   const path: L.LatLngTuple[] = []

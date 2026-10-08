@@ -27,6 +27,8 @@ export interface Trip {
   lengthDays: number | null
   /** Rough "when" as the user said it ("julio"), while the dates are tentative. */
   whenHint: string | null
+  /** ISO codes of the destination's countries (["jp"]); empty for a continent or region. */
+  countryCodes: string[]
   createdAt: string
   updatedAt: string
 }
@@ -229,7 +231,8 @@ export const api = {
     req<Weather>('GET', `/weather?${new URLSearchParams({ lat: String(lat), lng: String(lng), start: start ?? '', end: end ?? '' })}`),
   reorderDay: (tripId: string, day: string | null, ids: string[]) =>
     req<Pin[]>('PUT', `/trips/${tripId}/days/${day ?? 'ideas'}/order`, { ids }),
-  geo: (q: string) => req<{ lat: number; lng: number } | null>('GET', `/geo?${new URLSearchParams({ q })}`),
+  geo: (q: string, countries: string[] = []) =>
+    req<{ lat: number; lng: number } | null>('GET', `/geo?${new URLSearchParams({ q, ...(countries.length ? { cc: countries.join(',') } : {}) })}`),
   deletePin: (tripId: string, id: string) => req<void>('DELETE', `/trips/${tripId}/pins/${id}`),
 
   chat: (tripId: string, text: string, patch?: Partial<Trip>, structured = false, context?: string | null) =>

@@ -129,7 +129,7 @@ async function locateAll() {
 
 async function loadCenter() {
   const city = dayTrip.value ?? stop.value?.city
-  center.value = city ? await geocodeCity(city, props.trip.destination) : null
+  center.value = city ? await geocodeCity(city, props.trip) : null
 }
 
 onMounted(() => {

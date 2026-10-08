@@ -43,6 +43,18 @@ const sections = computed<Section[]>(() => {
   return out
 })
 const tentative = computed(() => props.trip.datesTentative)
+
+// Bookings are facts on the timeline: one outside the trip's dates (a flight the day before, a hotel that
+// goes on) still shows on its own date, before or after the days, for the traveler to sort out.
+const outside = computed(() => {
+  const start = props.trip.startDate
+  const end = props.trip.endDate
+  if (!start || !end) return { before: [], after: [] }
+  const dates = new Set<string>()
+  for (const b of props.bookings) for (const d of [b.departDate, b.arriveDate, b.checkInDate, b.checkOutDate]) if (d && (d < start || d > end)) dates.add(d)
+  const rows = [...dates].sort().map((d) => ({ date: d, events: dayEvents(props.bookings, d) })).filter((r) => r.events.length)
+  return { before: rows.filter((r) => r.date < start), after: rows.filter((r) => r.date > end) }
+})
 const showPast = ref(false)
 const visibleDays = (sec: Section) => (sec.past && !showPast.value ? [] : sec.days)
 
@@ -78,6 +90,34 @@ function card(d: string, stop: Stop | null) {
 
 <template>
   <div class="flex flex-col gap-2.5">
+    <template v-if="outside.before.length">
+      <header class="px-1 pb-0.5">
+        <h2 class="font-display text-[19px] leading-tight font-bold tracking-tight text-slate-500">Antes del viaje</h2>
+        <p class="text-[13px] text-slate-500">Reservas fuera de las fechas · acomodá las fechas si hace falta</p>
+      </header>
+      <div
+        v-for="r in outside.before"
+        :key="r.date"
+        class="flex items-center gap-4 rounded-[20px] border-[1.5px] border-dashed border-[#CFDDD5] py-3 pr-3 pl-3.5"
+      >
+        <div class="w-11 flex-none text-center">
+          <div class="text-[11px] font-extrabold text-slate-400 uppercase">{{ fmtDay(r.date, { weekday: 'short' }) }}</div>
+          <div class="font-display text-[22px] leading-none font-bold text-slate-500">{{ Number(r.date.slice(8)) }}</div>
+          <div class="mt-1 text-[11px] text-slate-400">{{ fmtDay(r.date, { month: 'short' }) }}</div>
+        </div>
+        <div class="flex min-w-0 flex-1 flex-wrap gap-1.5">
+          <span
+            v-for="e in r.events"
+            :key="e.booking.id + e.type"
+            class="inline-flex h-7 items-center gap-1 rounded-full bg-brand-soft pr-2.5 pl-2 text-[13px] font-bold text-brand-dark"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="KIND_META[e.booking.kind].icon" />
+            {{ e.label }}<template v-if="e.time"> · {{ e.time }}</template>
+          </span>
+        </div>
+      </div>
+    </template>
+
     <template v-for="sec in sections" :key="sec.key">
       <header v-if="sec.stop" class="flex items-center gap-3 px-1 pt-4 pb-0.5 first:pt-0">
         <span class="grid h-8 min-w-8 place-items-center rounded-full bg-brand px-2 text-sm font-extrabold text-white">{{ sec.n }}</span>
@@ -175,6 +215,34 @@ function card(d: string, stop: Stop | null) {
         <template v-if="transferTo(sec.next)">{{ `${KIND_META[transferTo(sec.next)!.kind].label} ${transferTo(sec.next)!.departTime ?? ''}`.trim() }} → {{ sec.next.city }}</template>
         <template v-else>a {{ sec.next.city }}</template>
         <span class="flex-1 border-t-2 border-dashed border-[#CFE3D8]" />
+      </div>
+    </template>
+
+    <template v-if="outside.after.length">
+      <header class="px-1 pt-4 pb-0.5">
+        <h2 class="font-display text-[19px] leading-tight font-bold tracking-tight text-slate-500">Después del viaje</h2>
+        <p class="text-[13px] text-slate-500">Reservas fuera de las fechas · acomodá las fechas si hace falta</p>
+      </header>
+      <div
+        v-for="r in outside.after"
+        :key="r.date"
+        class="flex items-center gap-4 rounded-[20px] border-[1.5px] border-dashed border-[#CFDDD5] py-3 pr-3 pl-3.5"
+      >
+        <div class="w-11 flex-none text-center">
+          <div class="text-[11px] font-extrabold text-slate-400 uppercase">{{ fmtDay(r.date, { weekday: 'short' }) }}</div>
+          <div class="font-display text-[22px] leading-none font-bold text-slate-500">{{ Number(r.date.slice(8)) }}</div>
+          <div class="mt-1 text-[11px] text-slate-400">{{ fmtDay(r.date, { month: 'short' }) }}</div>
+        </div>
+        <div class="flex min-w-0 flex-1 flex-wrap gap-1.5">
+          <span
+            v-for="e in r.events"
+            :key="e.booking.id + e.type"
+            class="inline-flex h-7 items-center gap-1 rounded-full bg-brand-soft pr-2.5 pl-2 text-[13px] font-bold text-brand-dark"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" v-html="KIND_META[e.booking.kind].icon" />
+            {{ e.label }}<template v-if="e.time"> · {{ e.time }}</template>
+          </span>
+        </div>
       </div>
     </template>
   </div>

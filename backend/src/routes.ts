@@ -275,5 +275,6 @@ router.get('/weather', async (req, res) => {
 router.get('/geo', async (req, res) => {
   const q = String(req.query.q ?? '').trim()
   if (!q) throw new HttpError(400, 'q vacío')
-  res.json(await geocode(q))
+  const cc = String(req.query.cc ?? '').split(',').map((c) => c.trim().toLowerCase()).filter(Boolean)
+  res.json(await geocode(q, cc))
 })

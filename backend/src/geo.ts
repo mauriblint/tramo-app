@@ -19,12 +19,16 @@ function throttled<T>(fn: () => Promise<T>): Promise<T> {
   return run
 }
 
-export async function geocode(query: string): Promise<{ lat: number; lng: number } | null> {
-  const key = query.trim().toLowerCase()
+/** `countries` (ISO codes) keeps the search inside the trip's countries: "Takayama" can't land elsewhere. */
+export async function geocode(query: string, countries: string[] = []): Promise<{ lat: number; lng: number } | null> {
+  const cc = countries.filter((c) => /^[a-z]{2}$/.test(c)).join(',')
+  const key = `${query.trim().toLowerCase()}${cc ? `|${cc}` : ''}`
   const cached = getGeocache(key)
   if (cached) return cached.lat != null && cached.lng != null ? { lat: cached.lat, lng: cached.lng } : null
 
-  const url = `${NOMINATIM}?${new URLSearchParams({ q: query, format: 'jsonv2', limit: '1', 'accept-language': 'es' })}`
+  const params = new URLSearchParams({ q: query, format: 'jsonv2', limit: '1', 'accept-language': 'es' })
+  if (cc) params.set('countrycodes', cc)
+  const url = `${NOMINATIM}?${params}`
   const hit = await throttled(async () => {
     const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(8000) })
     if (!res.ok) throw new Error(`Nominatim ${res.status}`)
@@ -52,17 +56,20 @@ export function nameVariants(title: string): string[] {
 /** Resolve a pin's coordinates: exact place first, then fall back to its city (approximate). */
 export async function locatePin(pin: Pin, trip: Trip): Promise<Pin> {
   if (pin.geoStatus) return pin
+  const cc = trip.countryCodes
+  // Known countries scope the search; otherwise the destination text helps only when it names one place.
+  const scope = cc.length ? null : trip.destination
   const region = pin.city ?? trip.destination
   const exact = LOCATABLE.includes(pin.type)
-    ? nameVariants(pin.title).flatMap((name) => [pin.city && `${name}, ${pin.city}`, trip.destination && `${name}, ${trip.destination}`])
+    ? nameVariants(pin.title).flatMap((name) => [pin.city && `${name}, ${pin.city}`, scope ? `${name}, ${scope}` : cc.length ? name : null])
     : []
   for (const q of exact) {
     if (!q) continue
-    const hit = await geocode(q)
+    const hit = await geocode(q, cc)
     if (hit) return setPinGeo(pin.id, hit.lat, hit.lng, 'ok')!
   }
   if (region) {
-    const hit = await geocode(region)
+    const hit = await geocode(region, cc)
     if (hit) return setPinGeo(pin.id, hit.lat, hit.lng, 'approx')!
   }
   return setPinGeo(pin.id, null, null, 'none')!
