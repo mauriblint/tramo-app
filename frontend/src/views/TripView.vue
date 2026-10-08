@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { api, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type TimeOfDay, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
 import BookingForm from '@/components/BookingForm.vue'
+import DateRangePicker from '@/components/DateRangePicker.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CopilotDock from '@/components/CopilotDock.vue'
 import HotelList from '@/components/HotelList.vue'
@@ -69,7 +70,6 @@ const itineraryPills = computed(() => {
   const t = trip.value
   return [
     days.value.length ? `${days.value.length} días` : null,
-    datesLabel.value,
     stops.value.length ? `${stops.value.length} ${stops.value.length === 1 ? 'ciudad' : 'ciudades'}` : null,
   ].filter((x): x is string => !!x)
 })
@@ -456,9 +456,30 @@ watch(
 )
 
 async function saveTrip() {
-  const before = trip.value
-  const res = await run(() => api.updateTrip(props.id, tripForm.value))
   editingTrip.value = false
+  await patchTrip(tripForm.value)
+}
+
+// ---- trip dates from the itinerary header
+const pickingDates = ref(false)
+const savingDates = ref(false)
+/** The dates button: "Poner fechas" while they're placeholders, "9 oct → 22 oct" once real. */
+const datesButton = computed(() => {
+  const t = trip.value
+  if (!t?.startDate || !t.endDate || t.datesTentative) return null
+  return `${fmtDay(t.startDate, { day: 'numeric', month: 'short' })} → ${fmtDay(t.endDate, { day: 'numeric', month: 'short' })}`
+})
+async function saveDates(startDate: string, endDate: string) {
+  savingDates.value = true
+  await patchTrip({ startDate, endDate })
+  savingDates.value = false
+  pickingDates.value = false
+}
+
+/** Save trip fields; new dates move the plan along, so then reload it and say what moved. */
+async function patchTrip(patch: Partial<Trip>) {
+  const before = trip.value
+  const res = await run(() => api.updateTrip(props.id, patch))
   if (!res) return
   if (res.startDate === before?.startDate && res.endDate === before?.endDate) {
     trip.value = res
@@ -564,7 +585,17 @@ const editorTitle = computed(() =>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /></svg>
               Importar email
             </button>
-            <button class="btn-primary h-11 flex-none px-5" @click="tab === 'viajes' || tab === 'hoteles' ? openBooking() : openNew(null)">
+            <template v-if="tab === 'itinerario'">
+              <button v-if="datesButton" class="inline-flex h-11 items-center gap-2 rounded-full bg-rocio px-5 text-[15px] font-extrabold hover:bg-brand-soft" title="Cambiar las fechas" @click="pickingDates = true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                {{ datesButton }}
+              </button>
+              <button v-else class="btn-primary h-11 flex-none px-5" @click="pickingDates = true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+                Poner fechas
+              </button>
+            </template>
+            <button v-else class="btn-primary h-11 flex-none px-5" @click="tab === 'viajes' || tab === 'hoteles' ? openBooking() : openNew(null)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
               {{ SECTION[tab].action }}
             </button>
@@ -589,12 +620,23 @@ const editorTitle = computed(() =>
               <p class="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[15px] text-slate-500">
                 <template v-for="(f, i) in tripFacts" :key="f">
                   <span v-if="i" class="text-slate-300">·</span>
-                  <span>{{ f }}</span>
+                  <!-- Real dates: tap them to change them -->
+                  <button v-if="f === datesLabel && datesButton" class="font-semibold text-brand-dark underline decoration-dotted underline-offset-4" @click="pickingDates = true">{{ f }}</button>
+                  <span v-else>{{ f }}</span>
                 </template>
               </p>
             </div>
 
             <TripTabs class="md:hidden" :trip-id="trip.id" :active="tab" :ideas="ideas.length" />
+
+            <button
+              v-if="tab === 'itinerario' && !datesButton"
+              class="flex h-12 items-center justify-center gap-2 rounded-full bg-brand text-[15px] font-extrabold text-white md:hidden"
+              @click="pickingDates = true"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
+              Poner fechas
+            </button>
 
             <template v-if="tab === 'itinerario'">
               <div v-if="generation?.running" class="rounded-2xl bg-brand-soft px-4 py-3">
@@ -608,13 +650,6 @@ const editorTitle = computed(() =>
                     :style="{ width: `${(100 * generation.doneDays.length) / Math.max(1, generation.totalDays)}%` }"
                   />
                 </div>
-              </div>
-              <div v-if="trip.datesTentative" class="flex flex-wrap items-center gap-3 rounded-[20px] bg-sun-soft px-4 py-3 text-[14px] text-[#6B4E00]">
-                <span class="min-w-0 flex-1">
-                  <b>Fechas a confirmar{{ trip.whenHint ? ` · ${trip.whenHint}` : '' }}.</b>
-                  Cuando tengas los pasajes, poné las fechas: todo lo que armes se mueve con ellas.
-                </span>
-                <button class="h-10 flex-none rounded-full bg-white px-4 text-[13px] font-extrabold text-noche hover:bg-white/80" @click="openTripEditor">Poner fechas</button>
               </div>
               <ItineraryList :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
@@ -693,6 +728,16 @@ const editorTitle = computed(() =>
     </div>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />
+
+    <DateRangePicker
+      v-if="pickingDates && trip"
+      :start="trip.datesTentative ? null : trip.startDate"
+      :end="trip.datesTentative ? null : trip.endDate"
+      :keep-days="days.length || trip.lengthDays"
+      :busy="savingDates"
+      @save="saveDates"
+      @close="pickingDates = false"
+    />
 
     <PasteBookings
       v-if="pasting && trip"
