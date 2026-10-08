@@ -74,6 +74,14 @@ const summary = computed(() => {
   if (!to.value) return `${f} → elegí la vuelta`
   return `${f} → ${fmtDay(to.value, { weekday: 'short', day: 'numeric', month: 'short' })} · ${span(from.value, to.value)} días`
 })
+/** Picking 15 → 30 is 16 days: say so before saving, it's an easy slip. */
+const lengthChange = computed(() => {
+  if (!from.value || !to.value || !props.keepDays) return null
+  const diff = span(from.value, to.value) - props.keepDays
+  if (!diff) return null
+  const n = Math.abs(diff)
+  return `${n} ${n === 1 ? 'día' : 'días'} ${diff > 0 ? 'más' : 'menos'} que ahora (${props.keepDays})`
+})
 </script>
 
 <template>
@@ -123,7 +131,10 @@ const summary = computed(() => {
       </div>
 
       <div class="flex flex-wrap items-center gap-3 border-t border-[#E8EEEA] pt-4">
-        <span class="min-w-0 flex-1 text-[14px] font-bold text-slate-600">{{ summary }}</span>
+        <span class="min-w-0 flex-1 text-[14px] font-bold text-slate-600">
+          {{ summary }}
+          <span v-if="lengthChange" class="block text-[13px] font-extrabold text-[#8A6100]">{{ lengthChange }}</span>
+        </span>
         <button
           v-if="from && !to && keepDays"
           type="button"

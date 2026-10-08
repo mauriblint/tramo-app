@@ -357,6 +357,10 @@ export function setTripDates(id: string, startDate: string, endDate: string, ext
           s.id,
         )
     }
+    // The stay that reached the old last day owns that day only while it's the trip's end: a longer trip
+    // would leave it without it, so it keeps it explicitly (the new days are "Por definir").
+    const oldEnd = cur.endDate ? shiftDate(cur.endDate, moved) : null
+    if (oldEnd && endDate > oldEnd) db.prepare('UPDATE stops SET end_date = ? WHERE trip_id = ? AND end_date = ?').run(shiftDate(oldEnd, 1), id, oldEnd)
     toIdeas = db.prepare('UPDATE pins SET day = NULL, time_of_day = NULL WHERE trip_id = ? AND day IS NOT NULL AND (day > ? OR day < ?)').run(id, endDate, startDate).changes
     db.prepare('DELETE FROM stops WHERE trip_id = ? AND start_date > ?').run(id, endDate)
     db.prepare('UPDATE stops SET end_date = ? WHERE trip_id = ? AND end_date > ?').run(endDate, id, endDate)
