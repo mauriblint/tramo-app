@@ -282,11 +282,29 @@ const toMessage = (r: Row): Message => ({
 
 // ---- trips
 
+// People a trip is shared with (the owner is trips.user_id): they see and edit everything.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS trip_members (
+    trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    invited_by TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (trip_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS trip_members_user ON trip_members(user_id);
+`)
+
+/** Your trips and the ones shared with you. */
 export function listTrips(userId: string): Trip[] {
   return db
-    .prepare('SELECT * FROM trips WHERE user_id = ? ORDER BY updated_at DESC')
-    .all(userId)
+    .prepare('SELECT * FROM trips WHERE user_id = ? OR id IN (SELECT trip_id FROM trip_members WHERE user_id = ?) ORDER BY updated_at DESC')
+    .all(userId, userId)
     .map((r) => toTrip(r as Row))
+}
+
+/** Owner or member. */
+export function canAccessTrip(trip: Trip, userId: string): boolean {
+  return trip.userId === userId || !!db.prepare('SELECT 1 FROM trip_members WHERE trip_id = ? AND user_id = ?').get(trip.id, userId)
 }
 
 export function getTrip(id: string): Trip | null {

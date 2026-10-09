@@ -7,6 +7,7 @@ import { requireUser } from './auth.js'
 import * as bookings from './bookings.js'
 import { parseBookings } from './ai/bookings.js'
 import { dismissInbound, importInbound, listInbox } from './inbound.js'
+import { inviteMember, listMembers, removeMember } from './members.js'
 import { geocode, locatePin } from './geo.js'
 import { getWeather } from './weather.js'
 
@@ -19,10 +20,11 @@ function currentQuestion(tripId: string) {
   return trip && modeFor(tripId) === 'parse' ? nextQuestion(trip) : null
 }
 
-/** A trip that exists AND belongs to the signed-in user (anything else is a 404). */
+/** A trip that exists AND the signed-in user can open (anything else is a 404). */
 function tripOr404(req: Request): repo.Trip {
   const trip = repo.getTrip(String(req.params.tripId))
-  if (!trip || trip.userId !== req.user?.id) throw new HttpError(404, 'Trip no encontrado')
+  // Owner or someone it's shared with (anything else is a 404, not a 403: no hint the trip exists).
+  if (!trip || !req.user || !repo.canAccessTrip(trip, req.user.id)) throw new HttpError(404, 'Trip no encontrado')
   return trip
 }
 
@@ -118,7 +120,26 @@ router.post('/trips/:tripId/days/generate', (req, res) => {
 })
 
 router.delete('/trips/:tripId', (req, res) => {
-  repo.deleteTrip(tripOr404(req).id)
+  const trip = tripOr404(req)
+  if (trip.userId !== req.user!.id) throw new HttpError(403, 'Solo quien creó el viaje puede borrarlo')
+  repo.deleteTrip(trip.id)
+  res.status(204).end()
+})
+
+// ---- sharing: who's in the trip
+
+router.get('/trips/:tripId/members', (req, res) => {
+  res.json(listMembers(tripOr404(req)))
+})
+
+router.post('/trips/:tripId/members', async (req, res) => {
+  const trip = tripOr404(req)
+  res.status(201).json(await inviteMember(trip, req.user!, String(req.body?.email ?? ''), req.body?.name))
+})
+
+router.delete('/trips/:tripId/members/:userId', (req, res) => {
+  const trip = tripOr404(req)
+  removeMember(trip, req.user!, String(req.params.userId))
   res.status(204).end()
 })
 

@@ -22,25 +22,60 @@ function loginHtml({ name, code, link, isNew }: { name: string; code: string; li
 }
 
 /** Without a Resend key (local dev) the code and link go to the console instead. */
-export async function sendLoginEmail(p: { to: string; name: string; code: string; link: string; isNew: boolean }) {
-  if (!config.resendApiKey) {
-    console.log(`[auth] código para ${p.to}: ${p.code} · link: ${p.link}`)
-    return
-  }
+async function send(m: { to: string; subject: string; html: string; text: string }) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${config.resendApiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: config.resendFrom,
-      to: [p.to],
-      subject: `${p.code} es tu código para entrar a tramo`,
-      html: loginHtml(p),
-      text: `Entrá a tramo: ${p.link}\n\nO escribí este código: ${p.code}\n\nVence en 15 minutos.`,
-    }),
+    body: JSON.stringify({ from: config.resendFrom, to: [m.to], subject: m.subject, html: m.html, text: m.text }),
     signal: AbortSignal.timeout(10_000),
   })
   if (!res.ok) {
     console.error('[email] Resend', res.status, await res.text())
     throw new Error('No pudimos mandar el email. Probá de nuevo.')
   }
+}
+
+export async function sendLoginEmail(p: { to: string; name: string; code: string; link: string; isNew: boolean }) {
+  if (!config.resendApiKey) {
+    console.log(`[auth] código para ${p.to}: ${p.code} · link: ${p.link}`)
+    return
+  }
+  await send({
+    to: p.to,
+    subject: `${p.code} es tu código para entrar a tramo`,
+    html: loginHtml(p),
+    text: `Entrá a tramo: ${p.link}\n\nO escribí este código: ${p.code}\n\nVence en 15 minutos.`,
+  })
+}
+
+function inviteHtml({ name, from, trip, link, isNew }: { name: string; from: string; trip: string; link: string; isNew: boolean }) {
+  return `<!doctype html><html lang="es"><body style="margin:0;background:#F1F7F3;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#0E1F18">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:460px;background:#FFFFFF;border-radius:24px;overflow:hidden">
+  <tr><td style="background:#0A7A55;padding:28px 28px 24px;color:#FFFFFF">
+    <div style="font-size:22px;font-weight:700;letter-spacing:-0.5px">tramo</div>
+    <div style="margin-top:18px;font-size:15px;color:#C9F2E0">· · · · · · · · · · · · · · ●</div>
+  </td></tr>
+  <tr><td style="padding:28px">
+    <h1 style="margin:0 0 8px;font-size:24px;line-height:1.2">¡Hola ${esc(name)}! ${esc(from)} te invitó a su viaje</h1>
+    <p style="margin:0 0 6px;font-size:20px;font-weight:700;color:#0A7A55">${esc(trip)}</p>
+    <p style="margin:0 0 24px;font-size:15px;line-height:1.5;color:#3F4B45">Vas a poder ver y armar el itinerario y sumar ideas${config.inboundAddress ? `, y reenviar tus reservas a <b>${esc(config.inboundAddress)}</b>` : ''}.${isNew ? ' Ya te creamos la cuenta con este email: entrás siempre con un link como este, sin contraseña.' : ''}</p>
+    <a href="${link}" style="display:inline-block;background:#0A7A55;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:16px;padding:15px 26px;border-radius:28px">Abrir el viaje</a>
+    <p style="margin:24px 0 0;font-size:12px;color:#94A39C">El link sirve una vez y vence en 7 días. Después entrás a trytramo.com con tu email.</p>
+  </td></tr>
+</table></td></tr></table></body></html>`
+}
+
+/** "X te invitó a su viaje": the link signs you in and opens the trip. */
+export async function sendInviteEmail(p: { to: string; name: string; from: string; trip: string; link: string; isNew: boolean }) {
+  if (!config.resendApiKey) {
+    console.log(`[invite] ${p.from} → ${p.to} (${p.trip}) · link: ${p.link}`)
+    return
+  }
+  await send({
+    to: p.to,
+    subject: `${p.from} te invitó a "${p.trip}" en tramo`,
+    html: inviteHtml(p),
+    text: `${p.from} te invitó a su viaje "${p.trip}" en tramo.\n\nAbrilo acá: ${p.link}\n\nEl link sirve una vez y vence en 7 días.`,
+  })
 }

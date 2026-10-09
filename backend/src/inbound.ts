@@ -6,7 +6,7 @@ import { simpleParser } from 'mailparser'
 import { parseBookings } from './ai/bookings.js'
 import { findUserByEmail, type User } from './auth.js'
 import { cleanBooking, createBooking, listBookings, type Booking, type BookingInput } from './bookings.js'
-import { db, getTrip, listTrips, type Trip } from './db.js'
+import { canAccessTrip, db, getTrip, listTrips, type Trip } from './db.js'
 
 /**
  * Booking emails forwarded to the inbound address (Cloudflare Email Routing → Email Worker → POST here).
@@ -197,7 +197,7 @@ function inboundOf(userId: string, id: string): InboundEmail | null {
 export function importInbound(userId: string, id: string, tripId: string, picked?: unknown[]): Booking[] | null {
   const item = inboundOf(userId, id)
   const trip = getTrip(tripId)
-  if (!item || item.status !== 'review' || !trip || trip.userId !== userId) return null
+  if (!item || item.status !== 'review' || !trip || !canAccessTrip(trip, userId)) return null
   const list = (Array.isArray(picked) ? picked : item.bookings).map((b) => cleanBooking(b))
   const created = addToTrip(trip.id, list)
   setInbound(id, { status: 'imported', trip_id: trip.id })

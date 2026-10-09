@@ -85,15 +85,35 @@ export async function startLogin(rawEmail: string, rawName: string | undefined):
     .get(email, new Date(Date.now() - 3_600_000).toISOString()) as { n: number }
   if (recent.n >= MAX_EMAILS_PER_HOUR) throw new AuthError(429, 'Pediste muchos emails. Probá de nuevo en un rato.')
 
+  const { code, link } = createLoginLink(email, name, CODE_TTL_MIN)
+  await sendLoginEmail({ to: email, name, code, link, isNew: !existing })
+  return { isNew: !existing }
+}
+
+/**
+ * A one-time sign-in link (and its 6-digit code) for this email. `next` is where the app goes after
+ * signing in (an invitation lands on the trip); invitations live longer than the 15-minute login.
+ */
+export function createLoginLink(rawEmail: string, name: string | null, ttlMinutes: number, next?: string): { code: string; link: string } {
+  const email = normEmail(rawEmail)
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0')
   const token = randomBytes(32).toString('base64url')
   db.prepare(
     `INSERT INTO login_codes (id, email, name, code_hash, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(randomUUID(), email, name, sha(code), sha(token), inMinutes(CODE_TTL_MIN), now())
+  ).run(randomUUID(), email, name, sha(code), sha(token), inMinutes(ttlMinutes), now())
+  const params = new URLSearchParams({ token, ...(next ? { next } : {}) })
+  return { code, link: `${config.appUrl}/auth/verify?${params}` }
+}
 
-  const link = `${config.appUrl}/auth/verify?token=${token}`
-  await sendLoginEmail({ to: email, name, code, link, isNew: !existing })
-  return { isNew: !existing }
+/** Find the account for an email, or create it (an invited person gets one right away). */
+export function ensureUser(rawEmail: string, name?: string | null): { user: User; created: boolean } {
+  const email = normEmail(rawEmail)
+  if (!isEmail(email)) throw new AuthError(400, 'Revisá el email')
+  const existing = findUserByEmail(email)
+  if (existing) return { user: existing, created: false }
+  const user = { id: randomUUID(), name: name?.trim() || email.split('@')[0]!, email }
+  db.prepare('INSERT INTO users (id, name, email, created_at) VALUES (?, ?, ?, ?)').run(user.id, user.name, user.email, now())
+  return { user, created: true }
 }
 
 type CodeRow = { id: string; email: string; name: string | null; code_hash: string; attempts: number }
