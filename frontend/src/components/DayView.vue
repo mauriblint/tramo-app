@@ -20,6 +20,8 @@ const props = defineProps<{
   generation: GenerationStatus | null
   /** The copilot is answering (a description sent from here goes through it). */
   sending?: boolean
+  /** "Solo ver": no building or adding. */
+  readonly?: boolean
 }>()
 const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null]; ask: [string] }>()
 
@@ -248,6 +250,7 @@ function firstSentence(s: string) {
       </div>
 
       <!-- Empty day: build it, or describe what you want (the copilot can then build the whole stay) -->
+      <p v-else-if="!dayPins.length && readonly" class="mt-4 rounded-[20px] bg-white px-4 py-5 text-center text-[15px] text-slate-500 md:bg-rocio">Nada planeado todavía.</p>
       <form v-else-if="!dayPins.length" class="mt-4 flex flex-col gap-3 rounded-[22px] bg-white px-4 py-4 md:bg-rocio" @submit.prevent="build">
         <p class="text-[15px] text-slate-600">
           Nada planeado todavía.
@@ -299,7 +302,7 @@ function firstSentence(s: string) {
         <span>Zona para dormir: <b class="text-brand-dark">{{ stop.lodging }}</b></span>
       </div>
 
-      <div class="mt-4 flex gap-2">
+      <div v-if="!readonly" class="mt-4 flex gap-2">
         <button
           class="flex h-12 flex-1 items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white md:hover:bg-rocio"
           @click="emit('add', day)"

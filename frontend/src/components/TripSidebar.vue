@@ -7,8 +7,8 @@ import TramoLogo from '@/components/TramoLogo.vue'
 import type { TripTab } from '@/components/TripTabs.vue'
 
 /** Desktop: the trip's identity and sections, in the same green panel used while creating it. */
-const props = defineProps<{ trip: Trip; active: TripTab; ideas: number }>()
-const emit = defineEmits<{ copilot: []; rename: [string]; delete: []; share: [] }>()
+const props = defineProps<{ trip: Trip; active: TripTab; ideas: number; shared: number; readonly?: boolean }>()
+const emit = defineEmits<{ copilot: []; rename: [string]; delete: [] }>()
 
 // The pencil turns the name into a field: Enter (or leaving it) saves, Esc cancels.
 const editing = ref(false)
@@ -39,6 +39,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
   },
   { key: 'hoteles', label: 'Hoteles', icon: '<path d="M3 19V6M3 14h18v5M21 14a3 3 0 0 0-3-3h-7v3"/><circle cx="7" cy="11" r="1.6"/>' },
   { key: 'ideas', label: 'Ideas', icon: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0 0 12 3z"/>' },
+  { key: 'compartir', label: 'Compartir', icon: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.6M18.5 19a5 5 0 0 0-3-4.6"/>' },
 ]
 </script>
 
@@ -76,8 +77,8 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
       </template>
       <div v-if="menu" class="fixed inset-0 z-[20]" @click="menu = false" />
       <div v-if="menu" class="absolute top-11 right-0 z-[21] w-48 overflow-hidden rounded-2xl bg-white py-1.5 text-noche shadow-xl" role="menu">
-        <button role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="(menu = false), emit('share')">Compartir viaje</button>
-        <button role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="startRename">Cambiar el nombre</button>
+        <button v-if="!readonly" role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="startRename">Cambiar el nombre</button>
+        <RouterLink v-else role="menuitem" :to="{ path: `/trips/${trip.id}`, query: { tab: 'compartir' } }" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="menu = false">Quiénes están</RouterLink>
         <button
           v-if="trip.userId === auth.user?.id"
           role="menuitem"
@@ -110,6 +111,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
         />
         <span class="flex-1">{{ it.label }}</span>
         <span v-if="it.key === 'ideas' && ideas" class="text-xs font-bold" :class="it.key === active ? 'text-slate-400' : 'text-mint-text'">{{ ideas }}</span>
+        <span v-if="it.key === 'compartir' && shared" class="text-xs font-bold" :class="it.key === active ? 'text-slate-400' : 'text-mint-text'">{{ shared }}</span>
       </RouterLink>
     </nav>
 
@@ -117,6 +119,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
 
     <!-- On wide screens the copilot has its own column. -->
     <button
+      v-if="!readonly"
       class="flex h-14 items-center gap-3 rounded-full bg-noche pr-2 pl-5 xl:hidden text-left shadow-[0_12px_28px_rgba(14,31,24,0.3)] hover:bg-black"
       @click="$emit('copilot')"
     >

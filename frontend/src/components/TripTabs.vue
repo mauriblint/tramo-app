@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type TripTab = 'itinerario' | 'viajes' | 'hoteles' | 'ideas'
+export type TripTab = 'itinerario' | 'viajes' | 'hoteles' | 'ideas' | 'compartir'
 
 defineProps<{ tripId: string; active: TripTab; ideas: number }>()
 

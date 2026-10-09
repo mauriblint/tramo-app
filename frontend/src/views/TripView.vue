@@ -2,10 +2,10 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { api, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type TimeOfDay, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
+import { api, type Member, type TripRole, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type TimeOfDay, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
 import BookingForm from '@/components/BookingForm.vue'
 import DateRangePicker from '@/components/DateRangePicker.vue'
-import ShareTrip from '@/components/ShareTrip.vue'
+import SharePanel from '@/components/SharePanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CopilotDock from '@/components/CopilotDock.vue'
 import HotelList from '@/components/HotelList.vue'
@@ -57,7 +57,7 @@ const level = computed<'trip' | 'day' | 'pin'>(() =>
 )
 const tab = computed<TripTab>(() => {
   const t = route.query.tab
-  return t === 'viajes' || t === 'hoteles' || t === 'ideas' ? t : 'itinerario'
+  return t === 'viajes' || t === 'hoteles' || t === 'ideas' || t === 'compartir' ? t : 'itinerario'
 })
 /** The sidebar keeps the section you came from highlighted while you're inside a day or an activity. */
 const navTab = computed<TripTab>(() => (level.value === 'trip' ? tab.value : currentPin.value && !currentPin.value.day ? 'ideas' : 'itinerario'))
@@ -66,6 +66,7 @@ const SECTION: Record<TripTab, { title: string; action: string }> = {
   viajes: { title: 'Viajes', action: 'Agregar viaje' },
   hoteles: { title: 'Hoteles', action: 'Agregar hotel' },
   ideas: { title: 'Ideas', action: 'Agregar idea' },
+  compartir: { title: 'Compartir', action: '' },
 }
 /** Itinerary header pills: short facts that stay readable however many stops the trip has. */
 const itineraryPills = computed(() => {
@@ -133,8 +134,31 @@ type EditorCtx = { kind: 'pin'; pin: Pin } | { kind: 'new' } | { kind: 'suggesti
 const editor = ref<{ ctx: EditorCtx; draft: PinDraft } | null>(null)
 /** Phone (and onboarding): the "⋯" sheet with rename and delete. */
 const tripMenu = ref<null | 'menu' | 'rename'>(null)
-const sharing = ref(false)
 const isOwner = computed(() => !!trip.value && trip.value.userId === auth.user?.id)
+
+// ---- sharing: who's in the trip, and what you can do in it
+const members = ref<Member[]>([])
+const role = ref<TripRole | null>(null)
+/** "Solo ver": everything is visible, nothing changes (the server refuses it too). */
+const readonly = computed(() => role.value === 'viewer')
+const othersCount = computed(() => members.value.filter((m) => m.id !== auth.user?.id).length)
+const memberInitials = (m: Member) =>
+  m.name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+function goShare() {
+  router.push({ path: `/trips/${props.id}`, query: { tab: 'compartir' } })
+}
+async function loadMembers() {
+  try {
+    members.value = await api.members(props.id)
+  } catch {
+    // the trip works without it
+  }
+}
 const nameDraft = ref('')
 
 /** Before the day-by-day exists the screen is a conversation (+ route); afterwards it's the plan. */
@@ -186,6 +210,8 @@ async function load() {
     messages.value = data.messages
     generation.value = data.generation
     question.value = data.question
+    role.value = data.role
+    loadMembers()
     if (data.generation?.running) startPolling()
     // Coming from the home screen: the first message was typed there.
     const q = typeof route.query.q === 'string' ? route.query.q.trim() : ''
@@ -247,6 +273,7 @@ async function generate() {
 
 /** "Armar este día" (and the city, for a day that has none yet). */
 async function buildDays(day: string, city: string | null) {
+  if (readonly.value) return
   const res = await run(() => api.generateDays(props.id, [day], city))
   if (!res) return
   generation.value = res.generation
@@ -342,11 +369,13 @@ const bookingError = ref('')
 const bookingPlaces = computed(() => [...new Set([...stops.value.map((s) => s.city), ...bookings.value.flatMap((b) => [b.origin, b.destination])].filter((x): x is string => !!x))])
 
 function openBooking(prefill: Partial<BookingInput> = {}) {
+  if (readonly.value) return
   const kind = prefill.kind ?? (tab.value === 'hoteles' ? 'hotel' : 'flight')
   bookingError.value = ''
   bookingForm.value = { initial: emptyBooking(kind, prefill), editing: null, kinds: kind === 'hotel' ? ['hotel'] : TRANSPORT_KINDS }
 }
 function editBooking(b: Booking) {
+  if (readonly.value) return
   bookingError.value = ''
   bookingForm.value = { initial: { ...b }, editing: b, kinds: b.kind === 'hotel' ? ['hotel'] : TRANSPORT_KINDS }
 }
@@ -379,11 +408,13 @@ async function deleteBooking() {
 
 /** From the Ideas tab: ask the copilot (it opens so you see the answer arrive). */
 function askCopilot(text: string) {
+  if (readonly.value) return
   dock.value?.open('half')
   send(text)
 }
 
 async function schedulePin(p: Pin, day: string, timeOfDay: TimeOfDay) {
+  if (readonly.value) return
   const res = await run(() => api.updatePin(props.id, p.id, { day, timeOfDay }))
   if (!res) return
   Object.assign(p, res)
@@ -391,16 +422,19 @@ async function schedulePin(p: Pin, day: string, timeOfDay: TimeOfDay) {
 }
 
 async function movePin(p: Pin, day: string | null) {
+  if (readonly.value) return
   const res = await run(() => api.updatePin(props.id, p.id, { day }))
   if (res) Object.assign(p, res)
 }
 
 async function setStatus(p: Pin, status: PinStatus) {
+  if (readonly.value) return
   const res = await run(() => api.updatePin(props.id, p.id, { status }))
   if (res) Object.assign(p, res)
 }
 
 function openNew(day: string | null = null) {
+  if (readonly.value) return
   const draft = emptyDraft()
   draft.day = day
   editor.value = { ctx: { kind: 'new' }, draft }
@@ -550,7 +584,7 @@ const editorTitle = computed(() =>
     <!-- ============ Planned: trip → day → activity, one narrow column ============ -->
     <!-- Phone: one column (map, sheet, tabs). Desktop: the green trip sidebar + one white panel showing one thing at a time. -->
     <div v-else-if="trip" class="min-h-dvh bg-rocio pb-40 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
-      <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @rename="renameTrip" @delete="deleteTrip" @share="sharing = true" />
+      <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" :shared="othersCount" :readonly="readonly" @copilot="dock?.open()" @rename="renameTrip" @delete="deleteTrip" />
 
       <div ref="panel" class="md:min-w-0 md:flex-1 md:overflow-y-auto md:rounded-[28px] md:bg-white">
       <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">
@@ -563,7 +597,8 @@ const editorTitle = computed(() =>
                 <span v-for="p in itineraryPills" :key="p" class="inline-flex h-7 items-center rounded-full bg-rocio px-3 text-[13px] font-bold text-slate-600">{{ p }}</span>
               </div>
             </div>
-            <div class="flex flex-none items-center gap-2">
+            <span v-if="readonly" class="inline-flex h-9 items-center rounded-full bg-sun-soft px-3.5 text-[13px] font-extrabold text-[#6B4E00]">Solo ver</span>
+            <div v-else-if="tab !== 'compartir'" class="flex flex-none items-center gap-2">
             <button
               v-if="tab === 'viajes' || tab === 'hoteles'"
               class="inline-flex h-11 items-center gap-1.5 rounded-full border-[1.5px] border-[#DCE3DF] px-4 text-sm font-bold hover:border-brand hover:text-brand-dark"
@@ -574,7 +609,7 @@ const editorTitle = computed(() =>
               Importar email
             </button>
             <template v-if="tab === 'itinerario'">
-              <button v-if="datesButton" class="inline-flex h-11 items-center gap-2 rounded-full bg-rocio px-5 text-[15px] font-extrabold hover:bg-brand-soft" title="Cambiar las fechas" @click="pickingDates = true">
+              <button v-if="datesButton" class="inline-flex h-11 items-center gap-2 rounded-full bg-rocio px-5 text-[15px] font-extrabold hover:bg-brand-soft" title="Cambiar las fechas" @click="!readonly && (pickingDates = true)">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>
                 {{ datesButton }}
               </button>
@@ -609,16 +644,32 @@ const editorTitle = computed(() =>
                 <template v-for="(f, i) in tripFacts" :key="f">
                   <span v-if="i" class="text-slate-300">·</span>
                   <!-- Real dates: tap them to change them -->
-                  <button v-if="f === datesLabel && datesButton" class="font-semibold text-brand-dark underline decoration-dotted underline-offset-4" @click="pickingDates = true">{{ f }}</button>
+                  <button v-if="f === datesLabel && datesButton && !readonly" class="font-semibold text-brand-dark underline decoration-dotted underline-offset-4" @click="pickingDates = true">{{ f }}</button>
                   <span v-else>{{ f }}</span>
                 </template>
               </p>
+              <button
+                class="mt-3 flex items-center gap-2 rounded-full py-1 pr-1 text-[14px] font-bold text-brand-dark"
+                :aria-label="othersCount ? `Compartido con ${othersCount}` : 'Compartir viaje'"
+                @click="goShare"
+              >
+                <span v-if="othersCount" class="flex -space-x-2">
+                  <span
+                    v-for="m in members.slice(0, 4)"
+                    :key="m.id"
+                    class="grid h-8 w-8 place-items-center rounded-full border-2 border-rocio text-[11px] font-extrabold"
+                    :class="m.owner ? 'bg-brand text-white' : 'bg-brand-soft text-brand-dark'"
+                  >{{ memberInitials(m) }}</span>
+                </span>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.6M18.5 19a5 5 0 0 0-3-4.6" /></svg>
+                {{ othersCount ? 'Compartido' : 'Compartir' }}
+              </button>
             </div>
 
             <TripTabs class="md:hidden" :trip-id="trip.id" :active="tab" :ideas="ideas.length" />
 
             <button
-              v-if="tab === 'itinerario' && !datesButton"
+              v-if="tab === 'itinerario' && !datesButton && !readonly"
               class="flex h-12 items-center justify-center gap-2 rounded-full bg-brand text-[15px] font-extrabold text-white md:hidden"
               @click="pickingDates = true"
             >
@@ -642,6 +693,14 @@ const editorTitle = computed(() =>
               <ItineraryList :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
 
+            <SharePanel
+              v-else-if="tab === 'compartir'"
+              :trip="trip"
+              :members="members"
+              @members="(list) => (members = list)"
+              @left="router.push('/plan')"
+            />
+
             <IdeasBoard
               v-else-if="tab === 'ideas'"
               :trip="trip"
@@ -652,7 +711,7 @@ const editorTitle = computed(() =>
             />
 
             <template v-else>
-              <div class="grid grid-cols-2 gap-2 md:hidden">
+              <div v-if="!readonly" class="grid grid-cols-2 gap-2 md:hidden">
                 <button class="flex h-12 items-center justify-center gap-2 rounded-full border-[1.5px] border-[#DCE3DF] bg-white text-[15px] font-bold" @click="pasting = true">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1" /><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" /></svg>
                   Importar email
@@ -678,6 +737,7 @@ const editorTitle = computed(() =>
           :weather="weather"
           :generation="generation"
           :sending="sending"
+          :readonly="readonly"
           @located="(p, np) => Object.assign(p, np)"
           @add="openNew"
           @generate="buildDays"
@@ -690,7 +750,7 @@ const editorTitle = computed(() =>
           :stops="stops"
           :pins="pins"
           :pin="currentPin"
-          @edit="(p) => (editor = { ctx: { kind: 'pin', pin: p }, draft: { ...p } })"
+          @edit="(p) => !readonly && (editor = { ctx: { kind: 'pin', pin: p }, draft: { ...p } })"
           @done="(p, done) => setStatus(p, done ? 'done' : 'want')"
           @move="movePin"
           @located="(p, np) => Object.assign(p, np)"
@@ -700,6 +760,7 @@ const editorTitle = computed(() =>
 
       <!-- The copilot, always present: right column on wide screens, bottom bar + sheet elsewhere. It knows the day/activity you're on. -->
       <CopilotDock
+        v-if="!readonly"
         ref="dock"
         :messages="messages"
         :sending="sending"
@@ -717,7 +778,6 @@ const editorTitle = computed(() =>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />
 
-    <ShareTrip v-if="sharing && trip" :trip="trip" @close="sharing = false" @left="router.push('/plan')" />
 
     <DateRangePicker
       v-if="pickingDates && trip"
@@ -767,11 +827,11 @@ const editorTitle = computed(() =>
     <div v-if="tripMenu" class="fixed inset-0 z-[1000] flex items-end justify-center bg-noche/45 sm:items-center sm:p-4" @click.self="tripMenu = null">
       <div class="flex w-full max-w-md flex-col gap-2 rounded-t-[28px] bg-white px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px]">
         <template v-if="tripMenu === 'menu'">
-          <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold hover:bg-rocio" @click="(tripMenu = null), (sharing = true)">
+          <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold hover:bg-rocio" @click="(tripMenu = null), goShare()">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.6M18.5 19a5 5 0 0 0-3-4.6" /></svg>
             Compartir viaje
           </button>
-          <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold hover:bg-rocio" @click="tripMenu = 'rename'">
+          <button v-if="!readonly" class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold hover:bg-rocio" @click="tripMenu = 'rename'">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
             Cambiar el nombre
           </button>

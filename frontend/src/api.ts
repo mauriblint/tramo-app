@@ -118,11 +118,16 @@ export interface InboxItem {
 }
 
 /** Someone in the trip: the owner, or a person it's shared with. */
+export type MemberRole = 'editor' | 'viewer'
+export type TripRole = 'owner' | MemberRole
+
 export interface Member {
   id: string
   name: string
   email: string
   owner: boolean
+  /** owner · editor ("Puede editar") · viewer ("Solo ver": sees everything, forwards bookings) */
+  role: TripRole
 }
 
 export interface QuestionOption {
@@ -216,6 +221,7 @@ export const api = {
       messages: Message[]
       generation: GenerationStatus | null
       question: Question | null
+      role: TripRole | null
     }>('GET', `/trips/${id}`),
   generate: (id: string, cities?: string[]) => req<GenerationStatus>('POST', `/trips/${id}/generate`, { cities: cities ?? null }),
   /** New dates move the plan along: `moved` days, and `toIdeas` activities that fell outside. */
@@ -224,7 +230,8 @@ export const api = {
     req<{ generation: GenerationStatus; stops: Stop[] }>('POST', `/trips/${id}/days/generate`, { days, city }),
   deleteTrip: (id: string) => req<void>('DELETE', `/trips/${id}`),
   members: (id: string) => req<Member[]>('GET', `/trips/${id}/members`),
-  invite: (id: string, email: string, name?: string) => req<Member[]>('POST', `/trips/${id}/members`, { email, name }),
+  invite: (id: string, email: string, name: string | undefined, role: MemberRole) => req<Member[]>('POST', `/trips/${id}/members`, { email, name, role }),
+  setRole: (id: string, userId: string, role: MemberRole) => req<Member[]>('PATCH', `/trips/${id}/members/${userId}`, { role }),
   removeMember: (id: string, userId: string) => req<void>('DELETE', `/trips/${id}/members/${userId}`),
 
   createBooking: (tripId: string, b: BookingInput) => req<Booking>('POST', `/trips/${tripId}/bookings`, b),
