@@ -29,6 +29,8 @@ export interface Trip {
   whenHint: string | null
   /** ISO codes of the destination's countries (["jp"]); empty for a continent or region. */
   countryCodes: string[]
+  /** Who created it (the owner); others see it because it's shared with them. */
+  userId: string | null
   createdAt: string
   updatedAt: string
 }
@@ -113,6 +115,14 @@ export interface InboxItem {
   /** The trip whose dates fit, when there's exactly one. */
   tripId: string | null
   receivedAt: string
+}
+
+/** Someone in the trip: the owner, or a person it's shared with. */
+export interface Member {
+  id: string
+  name: string
+  email: string
+  owner: boolean
 }
 
 export interface QuestionOption {
@@ -213,6 +223,9 @@ export const api = {
   generateDays: (id: string, days: string[], city: string | null) =>
     req<{ generation: GenerationStatus; stops: Stop[] }>('POST', `/trips/${id}/days/generate`, { days, city }),
   deleteTrip: (id: string) => req<void>('DELETE', `/trips/${id}`),
+  members: (id: string) => req<Member[]>('GET', `/trips/${id}/members`),
+  invite: (id: string, email: string, name?: string) => req<Member[]>('POST', `/trips/${id}/members`, { email, name }),
+  removeMember: (id: string, userId: string) => req<void>('DELETE', `/trips/${id}/members/${userId}`),
 
   createBooking: (tripId: string, b: BookingInput) => req<Booking>('POST', `/trips/${tripId}/bookings`, b),
   updateBooking: (tripId: string, id: string, b: BookingInput) => req<Booking>('PATCH', `/trips/${tripId}/bookings/${id}`, b),

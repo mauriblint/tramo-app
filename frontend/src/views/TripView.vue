@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type TimeOfDay, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
 import BookingForm from '@/components/BookingForm.vue'
 import DateRangePicker from '@/components/DateRangePicker.vue'
+import ShareTrip from '@/components/ShareTrip.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CopilotDock from '@/components/CopilotDock.vue'
 import HotelList from '@/components/HotelList.vue'
@@ -20,6 +21,7 @@ import ItineraryList from '@/components/ItineraryList.vue'
 import PinDetail from '@/components/PinDetail.vue'
 import TripSidebar from '@/components/TripSidebar.vue'
 import TripTabs, { type TripTab } from '@/components/TripTabs.vue'
+import { auth } from '@/auth'
 import { canOfferInstall, dismissInstall, install } from '@/install'
 import TripCover from '@/components/TripCover.vue'
 import TripHeader from '@/components/TripHeader.vue'
@@ -131,6 +133,8 @@ type EditorCtx = { kind: 'pin'; pin: Pin } | { kind: 'new' } | { kind: 'suggesti
 const editor = ref<{ ctx: EditorCtx; draft: PinDraft } | null>(null)
 /** Phone (and onboarding): the "⋯" sheet with rename and delete. */
 const tripMenu = ref<null | 'menu' | 'rename'>(null)
+const sharing = ref(false)
+const isOwner = computed(() => !!trip.value && trip.value.userId === auth.user?.id)
 const nameDraft = ref('')
 
 /** Before the day-by-day exists the screen is a conversation (+ route); afterwards it's the plan. */
@@ -546,7 +550,7 @@ const editorTitle = computed(() =>
     <!-- ============ Planned: trip → day → activity, one narrow column ============ -->
     <!-- Phone: one column (map, sheet, tabs). Desktop: the green trip sidebar + one white panel showing one thing at a time. -->
     <div v-else-if="trip" class="min-h-dvh bg-rocio pb-40 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
-      <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @rename="renameTrip" @delete="deleteTrip" />
+      <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" @copilot="dock?.open()" @rename="renameTrip" @delete="deleteTrip" @share="sharing = true" />
 
       <div ref="panel" class="md:min-w-0 md:flex-1 md:overflow-y-auto md:rounded-[28px] md:bg-white">
       <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">
@@ -713,6 +717,8 @@ const editorTitle = computed(() =>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />
 
+    <ShareTrip v-if="sharing && trip" :trip="trip" @close="sharing = false" @left="router.push('/plan')" />
+
     <DateRangePicker
       v-if="pickingDates && trip"
       :start="trip.datesTentative ? null : trip.startDate"
@@ -761,11 +767,15 @@ const editorTitle = computed(() =>
     <div v-if="tripMenu" class="fixed inset-0 z-[1000] flex items-end justify-center bg-noche/45 sm:items-center sm:p-4" @click.self="tripMenu = null">
       <div class="flex w-full max-w-md flex-col gap-2 rounded-t-[28px] bg-white px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px]">
         <template v-if="tripMenu === 'menu'">
+          <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold hover:bg-rocio" @click="(tripMenu = null), (sharing = true)">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.6M18.5 19a5 5 0 0 0-3-4.6" /></svg>
+            Compartir viaje
+          </button>
           <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold hover:bg-rocio" @click="tripMenu = 'rename'">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
             Cambiar el nombre
           </button>
-          <button class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold text-rose-600 hover:bg-rose-50" @click="(tripMenu = null), deleteTrip()">
+          <button v-if="isOwner" class="flex h-14 items-center gap-3 rounded-2xl px-4 text-left text-[16px] font-bold text-rose-600 hover:bg-rose-50" @click="(tripMenu = null), deleteTrip()">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
             Borrar viaje
           </button>

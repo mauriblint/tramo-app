@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { openAuth, verifyToken } from '@/auth'
 import TramoLogo from '@/components/TramoLogo.vue'
 
-/** Landing spot of the email link: exchange the token for a session and continue on /plan. */
+/** Landing spot of the email link: exchange the token for a session and continue (on /plan, or the invited trip). */
 const route = useRoute()
 const router = useRouter()
 const error = ref('')
@@ -14,7 +14,9 @@ onMounted(async () => {
   const token = typeof route.query.token === 'string' ? route.query.token : ''
   try {
     await verifyToken(token)
-    router.replace('/plan')
+    // An invitation lands on the shared trip.
+    const next = typeof route.query.next === 'string' && route.query.next.startsWith('/trips/') ? route.query.next : '/plan'
+    router.replace(next)
   } catch (e) {
     error.value = (e as Error).message
   }

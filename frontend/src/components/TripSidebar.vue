@@ -2,12 +2,13 @@
 import { nextTick, ref } from 'vue'
 
 import type { Trip } from '@/api'
+import { auth } from '@/auth'
 import TramoLogo from '@/components/TramoLogo.vue'
 import type { TripTab } from '@/components/TripTabs.vue'
 
 /** Desktop: the trip's identity and sections, in the same green panel used while creating it. */
 const props = defineProps<{ trip: Trip; active: TripTab; ideas: number }>()
-const emit = defineEmits<{ copilot: []; rename: [string]; delete: [] }>()
+const emit = defineEmits<{ copilot: []; rename: [string]; delete: []; share: [] }>()
 
 // The pencil turns the name into a field: Enter (or leaving it) saves, Esc cancels.
 const editing = ref(false)
@@ -75,8 +76,14 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
       </template>
       <div v-if="menu" class="fixed inset-0 z-[20]" @click="menu = false" />
       <div v-if="menu" class="absolute top-11 right-0 z-[21] w-48 overflow-hidden rounded-2xl bg-white py-1.5 text-noche shadow-xl" role="menu">
+        <button role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="(menu = false), emit('share')">Compartir viaje</button>
         <button role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="startRename">Cambiar el nombre</button>
-        <button role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold text-rose-600 hover:bg-rose-50" @click="(menu = false), emit('delete')">Borrar viaje</button>
+        <button
+          v-if="trip.userId === auth.user?.id"
+          role="menuitem"
+          class="block w-full px-4 py-2.5 text-left text-[14px] font-bold text-rose-600 hover:bg-rose-50"
+          @click="(menu = false), emit('delete')"
+        >Borrar viaje</button>
       </div>
     </div>
 

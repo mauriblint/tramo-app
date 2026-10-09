@@ -209,7 +209,10 @@ function onKey(e: KeyboardEvent) {
             <svg width="24" height="24" viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M16 46 C 22 22, 42 44, 48 18" :stroke="statusOf(t).tone === 'now' ? '#3D2C00' : '#0A7A55'" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 8" /><circle cx="16" cy="46" r="7" :fill="statusOf(t).tone === 'now' ? '#3D2C00' : '#0A7A55'" /><circle cx="48" cy="18" r="8.5" :fill="statusOf(t).tone === 'now' ? '#FFFFFF' : '#F5C84C'" /></svg>
           </span>
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-[17px] font-extrabold">{{ t.name }}</span>
+            <span class="block truncate text-[17px] font-extrabold">
+              {{ t.name }}
+              <span v-if="t.userId !== auth.user?.id" class="ml-1 rounded-full bg-brand-soft px-2 py-0.5 align-middle text-[11px] font-extrabold text-brand-dark">Compartido</span>
+            </span>
             <span class="block truncate text-[13px] text-slate-500">
               <template v-if="t.datesTentative">{{ [t.whenHint, t.lengthDays && `~${t.lengthDays} días`].filter(Boolean).join(' · ') || t.destination }}</template>
               <template v-else-if="t.startDate && t.endDate">{{ fmtDay(t.startDate, { day: 'numeric', month: 'short' }) }} → {{ fmtDay(t.endDate, { day: 'numeric', month: 'short', year: 'numeric' }) }}</template>
