@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
 import type { Booking, GenerationStatus, Pin, Stop, Trip, WeatherDay } from '@/api'
 import { KIND_META, chipLabel, dayEvents, hotelForNight } from '@/bookings'
@@ -22,18 +22,16 @@ const today = localToday()
 
 const allDays = computed(() => daysBetween(props.trip.startDate, props.trip.endDate))
 
-type Section = { key: string; stop: Stop | null; n: number; days: string[]; next: Stop | null; past: boolean }
+type Section = { key: string; stop: Stop | null; n: number; days: string[]; next: Stop | null }
 // Every day of the trip, grouped by where you sleep; runs of days without a stop are "Por definir".
 const sections = computed<Section[]>(() => {
   const out: Section[] = []
   let n = 0
   for (const d of allDays.value) {
     const stop = stopForDay(props.stops, d, props.trip.endDate)
-    // A trip that already started: days before today with no city and nothing planned are history, folded away.
-    const past = !keepingHistory.value && !stop && d < today && !byDay.value.get(d)?.length
     const last = out.at(-1)
-    if (last && (last.stop?.id ?? null) === (stop?.id ?? null) && last.past === past) last.days.push(d)
-    else out.push({ key: stop?.id ?? `gap-${d}`, stop, n: stop ? ++n : 0, days: [d], next: null, past })
+    if (last && (last.stop?.id ?? null) === (stop?.id ?? null)) last.days.push(d)
+    else out.push({ key: stop?.id ?? `gap-${d}`, stop, n: stop ? ++n : 0, days: [d], next: null })
   }
   // The transfer line only joins two stops that are back to back.
   out.forEach((sec, i) => {
@@ -55,18 +53,7 @@ const outside = computed(() => {
   const rows = [...dates].sort().map((d) => ({ date: d, events: dayEvents(props.bookings, d) })).filter((r) => r.events.length)
   return { before: rows.filter((r) => r.date < start), after: rows.filter((r) => r.date > end) }
 })
-const showPast = ref(false)
-
-/**
- * Anything loaded on a day that already passed (a city, a plan, a booking) means you're keeping the trip's
- * history: then nothing folds away and past days just carry a small "Pasado" label.
- */
-const keepingHistory = computed(() =>
-  allDays.value.some(
-    (d) => d < today && (!!stopForDay(props.stops, d, props.trip.endDate) || !!byDay.value.get(d)?.length || dayEvents(props.bookings, d).length > 0),
-  ),
-)
-const visibleDays = (sec: Section) => (sec.past && !showPast.value ? [] : sec.days)
+// Past days stay in the timeline (with a "Pasado" label): the whole trip, as you load it.
 
 const byDay = computed(() => {
   const m = new Map<string, Pin[]>()
@@ -141,21 +128,6 @@ function card(d: string, stop: Stop | null) {
           </p>
         </div>
       </header>
-      <button
-        v-else-if="sec.past"
-        type="button"
-        class="flex items-center gap-3 rounded-[18px] px-1 pt-4 pb-0.5 text-left first:pt-0"
-        :aria-expanded="showPast"
-        @click="showPast = !showPast"
-      >
-        <span class="grid h-8 w-8 place-items-center rounded-full bg-rocio text-slate-500 md:bg-white">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" :class="showPast ? 'rotate-90' : ''" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-        </span>
-        <span class="min-w-0">
-          <span class="font-display block truncate text-[19px] leading-tight font-bold tracking-tight text-slate-500">Días anteriores</span>
-          <span class="block truncate text-[13px] text-slate-500">{{ sec.days.length }} {{ sec.days.length === 1 ? 'día' : 'días' }} que ya pasaron</span>
-        </span>
-      </button>
       <header v-else class="flex items-center gap-3 px-1 pt-4 pb-0.5 first:pt-0">
         <span class="grid h-8 w-8 place-items-center rounded-full border-2 border-dashed border-[#B9C9C1] text-sm font-extrabold text-slate-400">?</span>
         <div class="min-w-0">
@@ -165,7 +137,7 @@ function card(d: string, stop: Stop | null) {
       </header>
 
       <RouterLink
-        v-for="d in visibleDays(sec)"
+        v-for="d in sec.days"
         :key="d"
         :to="`/trips/${trip.id}/days/${d}`"
         class="flex items-center gap-4 rounded-[20px] bg-white py-3.5 md:bg-rocio pr-3 pl-3.5 transition hover:shadow-[0_6px_18px_rgba(14,31,24,0.08)]"

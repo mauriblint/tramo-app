@@ -548,7 +548,7 @@ export function replaceStops(tripId: string, stops: StopDraft[]): Stop[] {
  * shorten, split or join stays: consecutive days in the same city are one stop. A stay keeps its lodging and
  * day trips when it's the same city as before.
  */
-export function setDaysCity(tripId: string, days: string[], city: string | null): Stop[] {
+export function setDaysCity(tripId: string, days: string[], city: string | null, opts: { fillGaps?: boolean } = {}): Stop[] {
   const trip = getTrip(tripId)
   if (!trip?.startDate || !trip.endDate) return listStops(tripId)
   const stops = listStops(tripId)
@@ -559,7 +559,21 @@ export function setDaysCity(tripId: string, days: string[], city: string | null)
 
   // The new map: a city per day (null = no stay), remembering which old stop each day came from.
   const cityOf = new Map<string, string | null>(all.map((d) => [d, owner.get(d)?.city ?? null]))
-  for (const d of days) if (cityOf.has(d)) cityOf.set(d, name)
+  const before = new Map(cityOf)
+  const set = new Set(days.filter((d) => cityOf.has(d)))
+  for (const d of set) cityOf.set(d, name)
+  // "A until B": a city holds until the next one. Setting it on a day also takes over the rest of the
+  // stretch that day belonged to (the same city, or no city), up to where a different one starts.
+  if (name) {
+    for (const d of [...set].sort()) {
+      const next = shiftDate(d, 1)
+      if (set.has(next) || !before.has(next)) continue
+      const inherited = before.get(d) ?? null
+      for (let x = next; before.has(x) && !set.has(x) && (before.get(x) ?? null) === inherited; x = shiftDate(x, 1)) cityOf.set(x, name)
+    }
+  }
+
+  if (opts.fillGaps) fillForward(all, cityOf)
 
   type Run = { city: string; days: string[]; from: Stop | null }
   const runs: Run[] = []
@@ -593,6 +607,28 @@ export function setDaysCity(tripId: string, days: string[], city: string | null)
 }
 
 export const setDayCity = (tripId: string, day: string, city: string) => setDaysCity(tripId, [day], city)
+
+/** "A until B": every day without a city takes the one before it (days before the first city stay empty). */
+function fillForward(all: string[], cityOf: Map<string, string | null>) {
+  let last: string | null = null
+  for (const d of all) {
+    const c = cityOf.get(d) ?? null
+    if (c) last = c
+    else if (last) cityOf.set(d, last)
+  }
+}
+
+/** Fill a trip's gaps between cities with the city before them (see fillForward). */
+export function fillCityGaps(tripId: string): void {
+  const trip = getTrip(tripId)
+  if (!trip?.startDate || !trip.endDate) return
+  const stops = listStops(tripId)
+  if (!stops.length) return
+  const all = daysBetweenDates(trip.startDate, trip.endDate)
+  const empty = all.filter((d) => !stopOfDay(trip, stops, d))
+  const first = stops[0]!
+  if (empty.some((d) => first.startDate && d > first.startDate)) setDaysCity(tripId, [], null, { fillGaps: true })
+}
 
 /**
  * "Pasá los días 14 y 15 al final": move a block of days, plans and city, so it starts on `to`. The days it
@@ -697,4 +733,10 @@ export function missingForRoute(t: Trip): string[] {
   if (!t.pace) out.push('ritmo')
   if (!t.interests.length) out.push('qué les gusta hacer')
   return out
+}
+
+// One-off: day-by-day trips made before "A until B" have gaps between their cities; fill them.
+if ((db.pragma('user_version', { simple: true }) as number) < 2) {
+  for (const r of db.prepare('SELECT id FROM trips WHERE freeform = 1').all() as { id: string }[]) fillCityGaps(r.id)
+  db.pragma('user_version = 2')
 }
