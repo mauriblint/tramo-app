@@ -302,9 +302,24 @@ export function listTrips(userId: string): Trip[] {
     .map((r) => toTrip(r as Row))
 }
 
+const memberCols = new Set((db.prepare('PRAGMA table_info(trip_members)').all() as { name: string }[]).map((c) => c.name))
+// editor: changes everything · viewer: sees everything and forwards bookings, changes nothing.
+if (!memberCols.has('role')) db.exec(`ALTER TABLE trip_members ADD COLUMN role TEXT NOT NULL DEFAULT 'editor'`)
+
+export const MEMBER_ROLES = ['editor', 'viewer'] as const
+export type MemberRole = (typeof MEMBER_ROLES)[number]
+export type TripRole = 'owner' | MemberRole
+
+/** What this person is in the trip (null = no access). */
+export function tripRole(trip: Trip, userId: string): TripRole | null {
+  if (trip.userId === userId) return 'owner'
+  const r = db.prepare('SELECT role FROM trip_members WHERE trip_id = ? AND user_id = ?').get(trip.id, userId) as { role: MemberRole } | undefined
+  return r?.role ?? null
+}
+
 /** Owner or member. */
 export function canAccessTrip(trip: Trip, userId: string): boolean {
-  return trip.userId === userId || !!db.prepare('SELECT 1 FROM trip_members WHERE trip_id = ? AND user_id = ?').get(trip.id, userId)
+  return tripRole(trip, userId) !== null
 }
 
 export function getTrip(id: string): Trip | null {

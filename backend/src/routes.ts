@@ -7,12 +7,25 @@ import { requireUser } from './auth.js'
 import * as bookings from './bookings.js'
 import { parseBookings } from './ai/bookings.js'
 import { dismissInbound, importInbound, listInbox } from './inbound.js'
-import { inviteMember, listMembers, removeMember } from './members.js'
+import { inviteMember, listMembers, removeMember, setMemberRole } from './members.js'
 import { geocode, locatePin } from './geo.js'
 import { getWeather } from './weather.js'
 
 export const router = Router()
 router.use(requireUser)
+
+// "Solo ver": anything that changes a trip is refused, except leaving it. Forwarded bookings go through the
+// inbox, not these routes, so viewers can still send theirs.
+router.use('/trips/:tripId', (req, _res, next) => {
+  if (req.method === 'GET') return next()
+  const trip = repo.getTrip(String(req.params.tripId))
+  if (!trip || !req.user) return next()
+  if (repo.tripRole(trip, req.user.id) !== 'viewer') return next()
+  if (req.method === 'DELETE' && req.path === `/members/${req.user.id}`) return next()
+  // Placing a pin on the map only stores its coordinates: viewing a day does it.
+  if (req.method === 'POST' && /^\/pins\/[^/]+\/locate$/.test(req.path)) return next()
+  next(new HttpError(403, 'Tenés permiso de solo ver en este viaje'))
+})
 
 /** The scripted onboarding question the UI should show buttons for (null once the route phase starts). */
 function currentQuestion(tripId: string) {
@@ -92,6 +105,8 @@ router.get('/trips/:tripId', (req, res) => {
     messages: repo.listMessages(trip.id),
     generation: generationStatus(trip.id),
     question: currentQuestion(trip.id),
+    /** What you can do here: owner, editor or viewer ("Solo ver"). */
+    role: repo.tripRole(trip, req.user!.id),
   })
 })
 
@@ -134,7 +149,11 @@ router.get('/trips/:tripId/members', (req, res) => {
 
 router.post('/trips/:tripId/members', async (req, res) => {
   const trip = tripOr404(req)
-  res.status(201).json(await inviteMember(trip, req.user!, String(req.body?.email ?? ''), req.body?.name))
+  res.status(201).json(await inviteMember(trip, req.user!, String(req.body?.email ?? ''), req.body?.name, req.body?.role))
+})
+
+router.patch('/trips/:tripId/members/:userId', (req, res) => {
+  res.json(setMemberRole(tripOr404(req), req.user!, String(req.params.userId), req.body?.role))
 })
 
 router.delete('/trips/:tripId/members/:userId', (req, res) => {
