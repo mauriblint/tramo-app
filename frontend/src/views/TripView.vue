@@ -151,10 +151,10 @@ const memberInitials = (m: Member) =>
     .slice(0, 2)
     .toUpperCase()
 const inviting = ref(false)
-function onInvited(list: Member[], email: string) {
+function onInvited(list: Member[], name: string) {
   members.value = list
   inviting.value = false
-  notify(`Le mandamos la invitación a ${email}: le llega un link que lo deja adentro del viaje.`)
+  notify(`Le mandamos la invitación a ${name}: le llega un link que lo deja adentro del viaje.`)
 }
 function goShare() {
   router.push({ path: `/trips/${props.id}`, query: { tab: 'compartir' } })
@@ -773,8 +773,9 @@ const editorTitle = computed(() =>
       </div>
 
       <!-- The copilot, always present: right column on wide screens, bottom bar + sheet elsewhere. It knows the day/activity you're on. -->
+      <!-- Not in Compartir: nothing to ask it there, and the section sells sharing on its own. -->
       <CopilotDock
-        v-if="!readonly"
+        v-if="!readonly && !(level === 'trip' && tab === 'compartir')"
         ref="dock"
         :messages="messages"
         :sending="sending"

@@ -121,7 +121,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
 
     <!-- On wide screens the copilot has its own column. -->
     <button
-      v-if="!readonly"
+      v-if="!readonly && active !== 'compartir'"
       class="flex h-14 items-center gap-3 rounded-full bg-noche pr-2 pl-5 xl:hidden text-left shadow-[0_12px_28px_rgba(14,31,24,0.3)] hover:bg-black"
       @click="$emit('copilot')"
     >

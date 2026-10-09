@@ -17,11 +17,12 @@ onMounted(() => nextTick(() => field.value?.focus()))
 
 async function invite() {
   const e = email.value.trim()
-  if (!e) return
+  const n = name.value.trim()
+  if (!e || !n) return
   error.value = ''
   busy.value = true
   try {
-    emit('invited', await api.invite(props.trip.id, e, name.value.trim() || undefined, role.value), e)
+    emit('invited', await api.invite(props.trip.id, e, n, role.value), n)
   } catch (err) {
     error.value = (err as Error).message
   } finally {
@@ -45,23 +46,24 @@ async function invite() {
       <p class="-mt-1 text-[14px] leading-relaxed text-slate-500">Le llega un email con un link que lo deja adentro del viaje. Si no tiene cuenta, se la creamos.</p>
 
       <span class="flex flex-col gap-1.5">
-        <label for="invite-email" class="text-[13px] font-bold text-slate-600">Email</label>
+        <label for="invite-name" class="text-[13px] font-bold text-slate-600">Nombre</label>
         <input
-          id="invite-email"
+          id="invite-name"
           ref="field"
-          v-model="email"
-          type="email"
+          v-model="name"
           required
-          placeholder="nombre@email.com"
+          placeholder="Cómo se llama"
           class="h-12 rounded-2xl border-[1.5px] border-[#DCE3DF] px-4 text-[16px] outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
         />
       </span>
       <span class="flex flex-col gap-1.5">
-        <label for="invite-name" class="text-[13px] font-bold text-slate-600">Nombre <i class="font-medium text-slate-400 not-italic">(opcional)</i></label>
+        <label for="invite-email" class="text-[13px] font-bold text-slate-600">Email</label>
         <input
-          id="invite-name"
-          v-model="name"
-          placeholder="Cómo se llama"
+          id="invite-email"
+          v-model="email"
+          type="email"
+          required
+          placeholder="nombre@email.com"
           class="h-12 rounded-2xl border-[1.5px] border-[#DCE3DF] px-4 text-[16px] outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
         />
       </span>
@@ -79,7 +81,7 @@ async function invite() {
       </fieldset>
 
       <p v-if="error" class="text-sm font-semibold text-rose-600">{{ error }}</p>
-      <button class="btn-primary h-12 text-[15px]" :disabled="busy || !email.trim()">{{ busy ? 'Invitando…' : 'Mandar invitación' }}</button>
+      <button class="btn-primary h-12 text-[15px]" :disabled="busy || !email.trim() || !name.trim()">{{ busy ? 'Invitando…' : 'Mandar invitación' }}</button>
     </form>
   </div>
 </template>
