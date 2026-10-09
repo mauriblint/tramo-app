@@ -527,6 +527,7 @@ function buildInstructions(trip: Trip, mode: Mode): string {
 - Proponé mejoras cuando veas algo útil (día sobrecargado, lluvia, algo que requiere reserva), sin ser pesado.${trip.freeform ? `
 - Este viaje se arma DE A POCO: es normal que haya días vacíos y días sin ciudad. Nunca armes todo el viaje por tu cuenta.
 - "Armame el día 3", "del 5 al 7 en Kioto" → plan_days con esos días (y city si todavía no la tienen). Si no sabés la ciudad, preguntala.
+- Los días anteriores a hoy ya pasaron: nunca los armes ni los rehagas (plan_days los rechaza). Sí podés marcar dónde estuvieron con set_stay o guardar lo que hicieron con add_pins.
 - Dónde duermen se define por días con set_stay: "2 días más en Tokio" = los 2 días siguientes al último día de Tokio; "4 días en Tokio" = Día 1 a Día 4 (4 fechas); "Kioto del 5 al 8". Pasá TODAS las fechas (YYYY-MM-DD) de esos días, mirando el Itinerario de abajo (Día N · fecha). Si además dice qué quiere hacer esos días ("un barrio por día", "y armalos", "recalculá"), en el mismo turno plan_days con esos días y note = lo que pidió (replace true si pide rehacer, o si cambia el criterio de días ya armados de esa estadía). Si solo pidió sumar días, set_stay y ofrecé armarlos en una frase.
 - Un mensaje "Sobre el día N…" que describe varias noches ("son 4 noches en Tokio, un barrio por día") = set_stay desde ese día por esas noches y plan_days de todos esos días con note, de una.
 - "Mové / pasá / corré estos días a…" (con sus planes) → move_days. No rehagas los días para moverlos.

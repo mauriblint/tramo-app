@@ -15,6 +15,7 @@ import {
   type Trip,
 } from '../db.js'
 import { HttpError, REASONING, daysBetween, openai } from './client.js'
+import { today } from '../today.js'
 
 /**
  * Itinerary generation: one streamed LLM call per stop, all in parallel. Each day is saved
@@ -255,7 +256,8 @@ export function startGeneration(tripId: string, cities?: string[] | null): Gener
 
   const wanted = cities?.length ? new Set(cities.map((c) => c.toLowerCase())) : null
   const targets = stops
-    .map((s, i) => ({ s, i, days: stopDays(trip, stops, s) }))
+    // Only today and later: past days are history.
+    .map((s, i) => ({ s, i, days: stopDays(trip, stops, s).filter((d) => d >= today()) }))
     .filter(({ s, days }) => days.length && (!wanted || wanted.has(s.city.toLowerCase())))
   if (!targets.length) throw new HttpError(400, 'No hay días para generar en esas paradas')
 
@@ -298,8 +300,11 @@ export function startDayGeneration(tripId: string, days: string[], city?: string
   let trip = getTrip(tripId)
   if (!trip) throw new HttpError(404, 'Trip no encontrado')
   const inTrip = new Set(daysBetween(trip.startDate, trip.endDate))
-  const wanted = [...new Set(days)].filter((d) => inTrip.has(d)).sort()
-  if (!wanted.length) throw new HttpError(400, 'Esos días no están en el viaje')
+  const inRange = [...new Set(days)].filter((d) => inTrip.has(d)).sort()
+  if (!inRange.length) throw new HttpError(400, 'Esos días no están en el viaje')
+  // Days that already passed are history: nothing to organize, no tokens spent on them.
+  const wanted = inRange.filter((d) => d >= today())
+  if (!wanted.length) throw new HttpError(400, 'Esos días ya pasaron: podés marcar dónde estuviste o agregar lo que hiciste, pero no se arman')
 
   for (const d of wanted) {
     if (stopOfDay(trip, listStops(tripId), d)) continue
