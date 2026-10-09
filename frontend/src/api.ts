@@ -226,6 +226,7 @@ export const api = {
   generate: (id: string, cities?: string[]) => req<GenerationStatus>('POST', `/trips/${id}/generate`, { cities: cities ?? null }),
   /** New dates move the plan along: `moved` days, and `toIdeas` activities that fell outside. */
   updateTrip: (id: string, t: Partial<Trip>) => req<Trip & { moved?: number; toIdeas?: number }>('PATCH', `/trips/${id}`, t),
+  setDaysCity: (id: string, days: string[], city: string | null) => req<Stop[]>('PUT', `/trips/${id}/days/city`, { days, city }),
   generateDays: (id: string, days: string[], city: string | null) =>
     req<{ generation: GenerationStatus; stops: Stop[] }>('POST', `/trips/${id}/days/generate`, { days, city }),
   deleteTrip: (id: string) => req<void>('DELETE', `/trips/${id}`),

@@ -126,6 +126,15 @@ router.patch('/trips/:tripId', (req, res) => {
   res.json(repo.updateTrip(trip.id, fields))
 })
 
+/** Where you were (or will be) these days, without building anything: history, or a hotel's nights. */
+router.put('/trips/:tripId/days/city', (req, res) => {
+  const trip = tripOr404(req)
+  const days = Array.isArray(req.body?.days) ? req.body.days.filter(isDay) : []
+  if (!days.length) throw new HttpError(400, 'Sin días')
+  const city = typeof req.body?.city === 'string' && req.body.city.trim() ? req.body.city.trim() : null
+  res.json(repo.setDaysCity(trip.id, days, city))
+})
+
 /** "Armar este día": only these days, around what they already have; `city` for a day that has no stop yet. */
 router.post('/trips/:tripId/days/generate', (req, res) => {
   const trip = tripOr404(req)

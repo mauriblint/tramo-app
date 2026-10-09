@@ -30,7 +30,7 @@ const sections = computed<Section[]>(() => {
   for (const d of allDays.value) {
     const stop = stopForDay(props.stops, d, props.trip.endDate)
     // A trip that already started: days before today with no city and nothing planned are history, folded away.
-    const past = !stop && d < today && !byDay.value.get(d)?.length
+    const past = !keepingHistory.value && !stop && d < today && !byDay.value.get(d)?.length
     const last = out.at(-1)
     if (last && (last.stop?.id ?? null) === (stop?.id ?? null) && last.past === past) last.days.push(d)
     else out.push({ key: stop?.id ?? `gap-${d}`, stop, n: stop ? ++n : 0, days: [d], next: null, past })
@@ -56,6 +56,16 @@ const outside = computed(() => {
   return { before: rows.filter((r) => r.date < start), after: rows.filter((r) => r.date > end) }
 })
 const showPast = ref(false)
+
+/**
+ * Anything loaded on a day that already passed (a city, a plan, a booking) means you're keeping the trip's
+ * history: then nothing folds away and past days just carry a small "Pasado" label.
+ */
+const keepingHistory = computed(() =>
+  allDays.value.some(
+    (d) => d < today && (!!stopForDay(props.stops, d, props.trip.endDate) || !!byDay.value.get(d)?.length || dayEvents(props.bookings, d).length > 0),
+  ),
+)
 const visibleDays = (sec: Section) => (sec.past && !showPast.value ? [] : sec.days)
 
 const byDay = computed(() => {
@@ -167,7 +177,7 @@ function card(d: string, stop: Stop | null) {
         </div>
         <div v-else class="w-11 flex-none text-center">
           <div class="text-[11px] font-extrabold text-slate-400 uppercase">{{ fmtDay(d, { weekday: 'short' }) }}</div>
-          <div class="font-display text-[26px] leading-none font-bold">{{ Number(d.slice(8)) }}</div>
+          <div class="font-display text-[26px] leading-none font-bold" :class="d < today ? 'text-slate-400' : ''">{{ Number(d.slice(8)) }}</div>
           <div class="mt-1 text-[11px] text-slate-400">Día {{ allDays.indexOf(d) + 1 }}</div>
         </div>
 
@@ -188,7 +198,7 @@ function card(d: string, stop: Stop | null) {
             <span class="h-3.5 w-3/4 animate-pulse rounded-full bg-[#D3E5DA]" />
             <span class="h-3 w-1/2 animate-pulse rounded-full bg-[#D3E5DA]" />
           </div>
-          <p v-else class="text-[15px] text-slate-400">Día libre</p>
+          <p v-else class="text-[15px] text-slate-400">{{ d < today ? 'Sin actividades' : 'Día libre' }}</p>
           <div v-if="card(d, sec.stop).events.length" class="mt-1.5 flex flex-wrap gap-1.5">
             <span
               v-for="e in card(d, sec.stop).events"
@@ -201,7 +211,8 @@ function card(d: string, stop: Stop | null) {
           </div>
         </div>
 
-        <div v-if="weather[d]" class="flex-none text-center text-xs text-slate-500" :title="weatherIcon(weather[d]!.code).label">
+        <span v-if="d < today" class="flex-none rounded-full bg-[#E6ECE8] px-2 py-0.5 text-[11px] font-extrabold text-slate-500 md:bg-white">Pasado</span>
+        <div v-else-if="weather[d]" class="flex-none text-center text-xs text-slate-500" :title="weatherIcon(weather[d]!.code).label">
           <div class="text-base leading-none">{{ weatherIcon(weather[d]!.code).emoji }}</div>
           <div class="mt-1 font-semibold">{{ weather[d]!.max }}°</div>
         </div>

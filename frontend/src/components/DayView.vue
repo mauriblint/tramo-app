@@ -23,7 +23,15 @@ const props = defineProps<{
   /** "Solo ver": no building or adding. */
   readonly?: boolean
 }>()
-const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null]; ask: [string] }>()
+const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null]; ask: [string]; city: [string, string] }>()
+
+/** A day that already passed: you record where you were, nothing gets built. */
+const isPast = computed(() => props.day < localToday())
+const pastCity = ref('')
+function savePastCity() {
+  const c = pastCity.value.trim()
+  if (c) emit('city', props.day, c)
+}
 
 const allDays = computed(() => daysBetween(props.trip.startDate, props.trip.endDate))
 const index = computed(() => allDays.value.indexOf(props.day))
@@ -79,7 +87,7 @@ watch(
 const wish = ref('')
 watch(
   () => props.day,
-  () => (wish.value = ''),
+  () => ((wish.value = ''), (pastCity.value = prevCity.value)),
 )
 function build() {
   const city = stop.value ? null : cityInput.value.trim()
@@ -198,7 +206,7 @@ function firstSentence(s: string) {
         <span class="text-[13px] font-extrabold tracking-wide text-brand uppercase">
           {{ dayName(trip, day) }}<template v-if="stop"> · {{ stop.city }}</template>
         </span>
-        <h1 class="font-display text-[30px] leading-[1.05] font-bold tracking-tight md:text-[34px]">{{ head.title || 'Día libre' }}</h1>
+        <h1 class="font-display text-[30px] leading-[1.05] font-bold tracking-tight md:text-[34px]">{{ head.title || (isPast ? 'Sin actividades' : 'Día libre') }}</h1>
         <p v-if="facts.length" class="flex flex-wrap gap-x-2 gap-y-1 text-[14px] text-slate-500">
           <template v-for="(f, i) in facts" :key="f">
             <span v-if="i" class="text-slate-300">·</span>
@@ -251,6 +259,25 @@ function firstSentence(s: string) {
 
       <!-- Empty day: build it, or describe what you want (the copilot can then build the whole stay) -->
       <p v-else-if="!dayPins.length && readonly" class="mt-4 rounded-[20px] bg-white px-4 py-5 text-center text-[15px] text-slate-500 md:bg-rocio">Nada planeado todavía.</p>
+
+      <!-- A past day: only where you were (history), no building -->
+      <p v-else-if="!dayPins.length && isPast && stop" class="mt-4 rounded-[20px] bg-white px-4 py-5 text-center text-[15px] text-slate-500 md:bg-rocio">
+        Este día estuviste en <b class="text-noche">{{ stop.city }}</b>. Si querés, agregá lo que hiciste.
+      </p>
+      <form v-else-if="!dayPins.length && isPast" class="mt-4 flex flex-col gap-3 rounded-[22px] bg-white px-4 py-4 md:bg-rocio" @submit.prevent="savePastCity">
+        <label :for="`past-city-${day}`" class="text-[15px] text-slate-600">Este día ya pasó. ¿Dónde estuviste?</label>
+        <input
+          :id="`past-city-${day}`"
+          v-model="pastCity"
+          list="day-cities"
+          placeholder="Ciudad, por ejemplo Kioto"
+          class="h-12 rounded-2xl border-[1.5px] border-[#DCE3DF] bg-white px-4 text-[16px] outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
+        />
+        <datalist id="day-cities">
+          <option v-for="c in knownCities" :key="c" :value="c" />
+        </datalist>
+        <button class="btn-primary h-12 text-[15px]" :disabled="!pastCity.trim()">Guardar</button>
+      </form>
       <form v-else-if="!dayPins.length" class="mt-4 flex flex-col gap-3 rounded-[22px] bg-white px-4 py-4 md:bg-rocio" @submit.prevent="build">
         <p class="text-[15px] text-slate-600">
           Nada planeado todavía.
@@ -311,7 +338,7 @@ function firstSentence(s: string) {
           Agregar algo
         </button>
         <button
-          v-if="dayPins.length && stop && !building"
+          v-if="dayPins.length && stop && !building && !isPast"
           class="flex h-12 flex-1 items-center justify-center gap-2 rounded-full border-[1.5px] border-brand text-[15px] font-bold text-brand hover:bg-brand-soft disabled:opacity-50"
           :disabled="!!generation?.running"
           title="Suma planes alrededor de lo que ya tiene el día"

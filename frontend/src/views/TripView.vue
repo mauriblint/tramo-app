@@ -27,7 +27,7 @@ import { canOfferInstall, dismissInstall, install } from '@/install'
 import TripCover from '@/components/TripCover.vue'
 import TripHeader from '@/components/TripHeader.vue'
 import { PACE_LABEL, TRAVELERS_LABEL } from '@/tripProfile'
-import { daysBetween, emptyDraft, fmtDay } from '@/pinMeta'
+import { daysBetween, emptyDraft, fmtDay, stopForDay } from '@/pinMeta'
 import { useTripWeather } from '@/weather'
 import { TRANSPORT_KINDS, emptyBooking } from '@/bookings'
 import { profileSteps, routeReplies } from '@/tripProfile'
@@ -278,6 +278,13 @@ async function generate() {
   startPolling()
 }
 
+/** Where you were (or sleep) these days, without building anything. */
+async function setCity(days: string[], city: string) {
+  if (readonly.value) return
+  const res = await run(() => api.setDaysCity(props.id, days, city))
+  if (res) stops.value = res
+}
+
 /** "Armar este día" (and the city, for a day that has none yet). */
 async function buildDays(day: string, city: string | null) {
   if (readonly.value) return
@@ -392,19 +399,38 @@ async function saveBooking(input: BookingInput) {
   bookingBusy.value = true
   bookingError.value = ''
   try {
+    let saved: Booking
     if (f.editing) {
-      const res = await api.updateBooking(props.id, f.editing.id, input)
-      bookings.value = bookings.value.map((b) => (b.id === res.id ? res : b))
+      saved = await api.updateBooking(props.id, f.editing.id, input)
+      bookings.value = bookings.value.map((b) => (b.id === saved.id ? saved : b))
     } else {
-      bookings.value = [...bookings.value, await api.createBooking(props.id, input)]
+      saved = await api.createBooking(props.id, input)
+      bookings.value = [...bookings.value, saved]
     }
     bookingForm.value = null
+    offerHotelCity(saved)
   } catch (e) {
     bookingError.value = (e as Error).message
   } finally {
     bookingBusy.value = false
   }
 }
+// A hotel already says where you sleep: if its nights have no city yet, offer to use it.
+const hotelCity = ref<{ hotel: string; days: string[]; city: string } | null>(null)
+function offerHotelCity(b: Booking) {
+  if (b.kind !== 'hotel' || !b.checkInDate || !b.checkOutDate || readonly.value) return
+  const inTrip = new Set(days.value)
+  const nights = daysBetween(b.checkInDate, b.checkOutDate).slice(0, -1).filter((d) => inTrip.has(d))
+  const missing = nights.filter((d) => !stopForDay(stops.value, d, trip.value?.endDate))
+  if (missing.length) hotelCity.value = { hotel: b.hotelName ?? 'el hotel', days: missing, city: '' }
+}
+async function saveHotelCity() {
+  const h = hotelCity.value
+  if (!h?.city.trim()) return
+  hotelCity.value = null
+  await setCity(h.days, h.city.trim())
+}
+
 async function deleteBooking() {
   const b = bookingForm.value?.editing
   if (!b || !confirm('¿Borrar esta reserva?')) return
@@ -756,6 +782,7 @@ const editorTitle = computed(() =>
           @add="openNew"
           @generate="buildDays"
           @ask="askAboutDay"
+          @city="(d, c) => setCity([d], c)"
         />
 
         <PinDetail
@@ -793,6 +820,30 @@ const editorTitle = computed(() =>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />
 
+
+    <div v-if="hotelCity" class="fixed inset-0 z-[1000] flex items-end justify-center bg-noche/45 sm:items-center sm:p-4" @click.self="hotelCity = null">
+      <form class="flex w-full max-w-md flex-col gap-3 rounded-t-[28px] bg-white px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px]" @submit.prevent="saveHotelCity">
+        <h2 class="font-display text-[20px] font-bold">¿En qué ciudad queda {{ hotelCity.hotel }}?</h2>
+        <p class="text-[14px] leading-relaxed text-slate-500">
+          Así marcamos dónde dormís {{ hotelCity.days.length === 1 ? `el ${fmtDay(hotelCity.days[0]!, { day: 'numeric', month: 'short' })}` : `del ${fmtDay(hotelCity.days[0]!, { day: 'numeric', month: 'short' })} al ${fmtDay(hotelCity.days.at(-1)!, { day: 'numeric', month: 'short' })}` }} y el itinerario se agrupa por ciudad.
+        </p>
+        <label class="sr-only" for="hotel-city">Ciudad del hotel</label>
+        <input
+          id="hotel-city"
+          v-model="hotelCity.city"
+          list="hotel-cities"
+          placeholder="Ciudad, por ejemplo Kanazawa"
+          class="h-12 rounded-2xl border-[1.5px] border-[#DCE3DF] px-4 text-[16px] outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
+        />
+        <datalist id="hotel-cities">
+          <option v-for="c in cities" :key="c" :value="c" />
+        </datalist>
+        <div class="flex items-center gap-3">
+          <button class="btn-primary h-12 flex-1 text-[15px]" :disabled="!hotelCity.city.trim()">Guardar</button>
+          <button type="button" class="h-12 rounded-full px-4 text-sm font-bold text-slate-500 hover:bg-rocio" @click="hotelCity = null">Ahora no</button>
+        </div>
+      </form>
+    </div>
 
     <InviteModal v-if="inviting && trip" :trip="trip" @invited="onInvited" @close="inviting = false" />
 
