@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api, type Member, type TripRole, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type TimeOfDay, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
 import BookingForm from '@/components/BookingForm.vue'
 import DateRangePicker from '@/components/DateRangePicker.vue'
+import InviteModal from '@/components/InviteModal.vue'
 import SharePanel from '@/components/SharePanel.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import CopilotDock from '@/components/CopilotDock.vue'
@@ -149,6 +150,12 @@ const memberInitials = (m: Member) =>
     .join('')
     .slice(0, 2)
     .toUpperCase()
+const inviting = ref(false)
+function onInvited(list: Member[], email: string) {
+  members.value = list
+  inviting.value = false
+  notify(`Le mandamos la invitación a ${email}: le llega un link que lo deja adentro del viaje.`)
+}
 function goShare() {
   router.push({ path: `/trips/${props.id}`, query: { tab: 'compartir' } })
 }
@@ -598,6 +605,10 @@ const editorTitle = computed(() =>
               </div>
             </div>
             <span v-if="readonly" class="inline-flex h-9 items-center rounded-full bg-sun-soft px-3.5 text-[13px] font-extrabold text-[#6B4E00]">Solo ver</span>
+            <button v-else-if="tab === 'compartir' && isOwner" class="btn-primary h-11 flex-none px-5" @click="inviting = true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M19 8v6M16 11h6" /></svg>
+              Invitar
+            </button>
             <div v-else-if="tab !== 'compartir'" class="flex flex-none items-center gap-2">
             <button
               v-if="tab === 'viajes' || tab === 'hoteles'"
@@ -693,13 +704,16 @@ const editorTitle = computed(() =>
               <ItineraryList :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
 
-            <SharePanel
-              v-else-if="tab === 'compartir'"
-              :trip="trip"
-              :members="members"
-              @members="(list) => (members = list)"
-              @left="router.push('/plan')"
-            />
+            <template v-else-if="tab === 'compartir'">
+              <button v-if="isOwner && othersCount" class="btn-primary h-12 text-[15px] md:hidden" @click="inviting = true">Invitar a alguien más</button>
+              <SharePanel
+                :trip="trip"
+                :members="members"
+                @members="(list) => (members = list)"
+                @left="router.push('/plan')"
+                @invite="inviting = true"
+              />
+            </template>
 
             <IdeasBoard
               v-else-if="tab === 'ideas'"
@@ -778,6 +792,8 @@ const editorTitle = computed(() =>
 
     <InstallCard v-if="showInstall" @close="closeInstall" />
 
+
+    <InviteModal v-if="inviting && trip" :trip="trip" @invited="onInvited" @close="inviting = false" />
 
     <DateRangePicker
       v-if="pickingDates && trip"

@@ -77,8 +77,10 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
       </template>
       <div v-if="menu" class="fixed inset-0 z-[20]" @click="menu = false" />
       <div v-if="menu" class="absolute top-11 right-0 z-[21] w-48 overflow-hidden rounded-2xl bg-white py-1.5 text-noche shadow-xl" role="menu">
+        <RouterLink role="menuitem" :to="{ path: `/trips/${trip.id}`, query: { tab: 'compartir' } }" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="menu = false">
+          {{ readonly ? 'Quiénes están' : 'Compartir viaje' }}
+        </RouterLink>
         <button v-if="!readonly" role="menuitem" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="startRename">Cambiar el nombre</button>
-        <RouterLink v-else role="menuitem" :to="{ path: `/trips/${trip.id}`, query: { tab: 'compartir' } }" class="block w-full px-4 py-2.5 text-left text-[14px] font-bold hover:bg-rocio" @click="menu = false">Quiénes están</RouterLink>
         <button
           v-if="trip.userId === auth.user?.id"
           role="menuitem"
