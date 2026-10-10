@@ -23,14 +23,30 @@ const props = defineProps<{
   /** "Solo ver": no building or adding. */
   readonly?: boolean
 }>()
-const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null]; ask: [string]; city: [string, string] }>()
+const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null]; ask: [string]; city: [string[], string | null] }>()
 
 /** A day that already passed: you record where you were, nothing gets built. */
 const isPast = computed(() => props.day < localToday())
 const pastCity = ref('')
 function savePastCity() {
   const c = pastCity.value.trim()
-  if (c) emit('city', props.day, c)
+  if (c) emit('city', [props.day], c)
+}
+
+// ---- change or remove the city: this day, or the whole stay it belongs to
+const editingCity = ref(false)
+const cityDraft = ref('')
+const cityScope = ref<'stay' | 'day'>('stay')
+const stayDays = computed(() => (stop.value ? allDays.value.filter((d) => stopForDay(props.stops, d, props.trip.endDate) === stop.value) : []))
+function openCity() {
+  cityDraft.value = stop.value?.city ?? ''
+  cityScope.value = 'stay'
+  editingCity.value = true
+}
+function saveCity(city: string | null) {
+  const days = cityScope.value === 'stay' && stayDays.value.length > 1 ? stayDays.value : [props.day]
+  emit('city', days, city?.trim() || null)
+  editingCity.value = false
 }
 
 const allDays = computed(() => daysBetween(props.trip.startDate, props.trip.endDate))
@@ -204,7 +220,14 @@ function firstSentence(s: string) {
     <section class="relative z-[600] -mt-7 rounded-t-[28px] bg-rocio px-4 pt-6 pb-6 md:mt-6 md:rounded-none md:bg-transparent md:p-0">
       <div class="flex flex-col gap-2 px-1 pb-2">
         <span class="text-[13px] font-extrabold tracking-wide text-brand uppercase">
-          {{ dayName(trip, day) }}<template v-if="stop"> · {{ stop.city }}</template>
+          {{ dayName(trip, day) }}<template v-if="stop">
+            ·
+            <button v-if="!readonly" type="button" class="inline-flex items-center gap-1 uppercase hover:underline" title="Cambiar la ciudad" @click="openCity">
+              {{ stop.city }}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+            </button>
+            <template v-else>{{ stop.city }}</template>
+          </template>
         </span>
         <h1 class="font-display text-[30px] leading-[1.05] font-bold tracking-tight md:text-[34px]">{{ head.title || (isPast ? 'Sin actividades' : 'Día libre') }}</h1>
         <p v-if="facts.length" class="flex flex-wrap gap-x-2 gap-y-1 text-[14px] text-slate-500">
@@ -349,5 +372,36 @@ function firstSentence(s: string) {
         </button>
       </div>
     </section>
+      <!-- Change or remove where you are -->
+    <div v-if="editingCity" class="fixed inset-0 z-[1000] flex items-end justify-center bg-noche/45 sm:items-center sm:p-4" @click.self="editingCity = false">
+      <form
+        role="dialog"
+        aria-label="Ciudad del día"
+        class="flex w-full max-w-[440px] flex-col gap-4 rounded-t-[28px] bg-white px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:px-6"
+        @submit.prevent="saveCity(cityDraft)"
+      >
+        <h2 class="font-display text-[20px] font-bold">¿Dónde estás este día?</h2>
+        <input
+          v-model="cityDraft"
+          placeholder="Córdoba, Argentina"
+          class="h-12 rounded-2xl border-[1.5px] border-[#DCE3DF] px-4 text-[16px] outline-none focus:border-brand focus:shadow-[0_0_0_4px_#E3F5EC]"
+        />
+        <p class="-mt-2 text-[13px] text-slate-500">Si hay varias con el mismo nombre, sumale el país.</p>
+        <fieldset v-if="stayDays.length > 1" class="flex flex-col gap-2">
+          <label class="flex cursor-pointer items-center gap-3 rounded-2xl border-[1.5px] px-4 py-3 text-[14px]" :class="cityScope === 'stay' ? 'border-brand bg-brand-soft/40' : 'border-[#DCE3DF]'">
+            <input v-model="cityScope" type="radio" value="stay" class="accent-[#0A7A55]" />
+            <span><b>Toda la estadía</b> · {{ stayDays.length }} días en {{ stop?.city }}</span>
+          </label>
+          <label class="flex cursor-pointer items-center gap-3 rounded-2xl border-[1.5px] px-4 py-3 text-[14px]" :class="cityScope === 'day' ? 'border-brand bg-brand-soft/40' : 'border-[#DCE3DF]'">
+            <input v-model="cityScope" type="radio" value="day" class="accent-[#0A7A55]" />
+            <span><b>Solo este día</b></span>
+          </label>
+        </fieldset>
+        <div class="flex items-center gap-2">
+          <button class="btn-primary h-12 flex-1 text-[15px]" :disabled="!cityDraft.trim()">Guardar</button>
+          <button type="button" class="h-12 rounded-full px-4 text-sm font-bold text-rose-600 hover:bg-rose-50" @click="saveCity(null)">Quitar ciudad</button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>

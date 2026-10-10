@@ -331,7 +331,7 @@ watch(
 onBeforeUnmount(() => clearTimeout(locateTimer))
 
 /** Where you were (or sleep) these days, without building anything. */
-async function setCity(days: string[], city: string) {
+async function setCity(days: string[], city: string | null) {
   if (readonly.value) return
   const res = await run(() => api.setDaysCity(props.id, days, city))
   if (res) stops.value = res
@@ -842,7 +842,7 @@ const editorTitle = computed(() =>
           @add="openNew"
           @generate="buildDays"
           @ask="askAboutDay"
-          @city="(d, c) => setCity([d], c)"
+          @city="setCity"
         />
 
         <PinDetail
