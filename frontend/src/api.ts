@@ -88,6 +88,8 @@ export interface BookingInput {
   number: string | null
   seat: string | null
   hotelName: string | null
+  /** Where the hotel is ("Kioto"), read from the confirmation. */
+  city: string | null
   address: string | null
   checkInDate: string | null
   checkInTime: string | null

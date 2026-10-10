@@ -72,7 +72,7 @@ async function placeCitiesAndHotels() {
     ...props.stops.map((s) => ({ key: `city:${s.city}`, q: s.city })),
     ...props.bookings
       .filter((b) => b.kind === 'hotel')
-      .map((b) => ({ key: `hotel:${b.id}`, q: b.address || [b.hotelName, b.checkInDate && cityOfDay(b.checkInDate)].filter(Boolean).join(', ') })),
+      .map((b) => ({ key: `hotel:${b.id}`, q: b.address || [b.hotelName, b.city ?? (b.checkInDate && cityOfDay(b.checkInDate))].filter(Boolean).join(', ') })),
   ]
   for (const w of want) {
     if (w.key in geo.value) continue

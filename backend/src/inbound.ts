@@ -5,7 +5,7 @@ import { simpleParser } from 'mailparser'
 
 import { parseBookings } from './ai/bookings.js'
 import { findUserByEmail, type User } from './auth.js'
-import { cleanBooking, createBooking, listBookings, type Booking, type BookingInput } from './bookings.js'
+import { claimHotelNights, cleanBooking, createBooking, listBookings, type Booking, type BookingInput } from './bookings.js'
 import { canAccessTrip, db, getTrip, listTrips, type Trip } from './db.js'
 
 /**
@@ -153,6 +153,7 @@ function addToTrip(tripId: string, list: BookingInput[]): Booking[] {
     existing.add(keyOf(b))
     created.push(createBooking(tripId, b))
   }
+  for (const b of created) claimHotelNights(b)
   return created
 }
 

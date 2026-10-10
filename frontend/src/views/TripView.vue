@@ -209,6 +209,15 @@ const headerSubtitle = computed(() => {
 
 onMounted(load)
 
+/** Pasted confirmations: a hotel can fill in where you sleep on nights without a place, so stays come back fresh. */
+async function onPasted(list: Booking[]) {
+  bookings.value = [...bookings.value, ...list]
+  pasting.value = false
+  if (!list.some((b) => b.kind === 'hotel' && b.city)) return
+  const data = await api.getTrip(props.id).catch(() => null)
+  if (data) stops.value = data.stops
+}
+
 async function load() {
   try {
     const data = await api.getTrip(props.id)
@@ -901,7 +910,7 @@ const editorTitle = computed(() =>
     <PasteBookings
       v-if="pasting && trip"
       :trip-id="trip.id"
-      @saved="(list) => ((bookings = [...bookings, ...list]), (pasting = false))"
+      @saved="onPasted"
       @close="pasting = false"
     />
 

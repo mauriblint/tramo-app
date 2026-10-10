@@ -181,7 +181,9 @@ function bookingOr404(req: Request): bookings.Booking {
 
 router.post('/trips/:tripId/bookings', (req, res) => {
   const trip = tripOr404(req)
-  res.status(201).json(bookings.createBooking(trip.id, bookings.cleanBooking(req.body)))
+  const created = bookings.createBooking(trip.id, bookings.cleanBooking(req.body))
+  bookings.claimHotelNights(created)
+  res.status(201).json(created)
 })
 
 /** Read a pasted confirmation email into bookings for the user to review (nothing is saved). */

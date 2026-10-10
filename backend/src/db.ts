@@ -372,7 +372,7 @@ export function updateTrip(id: string, input: Partial<Trip>): Trip | null {
   return getTrip(id)
 }
 
-const shiftDate = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+export const shiftDate = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
 const daysFrom = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
 
 /**
@@ -669,7 +669,7 @@ export function moveDays(tripId: string, days: string[], to: string): { moved: n
   return { moved: offset, days: target }
 }
 
-function daysBetweenDates(start: string, end: string): string[] {
+export function daysBetweenDates(start: string, end: string): string[] {
   const out: string[] = []
   for (let d = start; d <= end; d = shiftDate(d, 1)) out.push(d)
   return out

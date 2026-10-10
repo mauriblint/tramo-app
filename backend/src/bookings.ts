@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { HttpError } from './ai/client.js'
-import { db } from './db.js'
+import { daysBetweenDates, db, getTrip, listStops, setDaysCity, shiftDate, stopOfDay } from './db.js'
 
 /**
  * What the traveler booked (flights, trains, buses, hotels): facts they load themselves, shown in the
@@ -33,6 +33,7 @@ db.exec(`
     -- Hotel
     hotel_name TEXT,
     address TEXT,
+    city TEXT,              -- where the hotel is ("Kioto"): sets where you sleep on nights that don't have a place yet
     check_in_date TEXT,
     check_in_time TEXT,     -- empty = the usual "from 15:00"
     check_out_date TEXT,
@@ -50,6 +51,7 @@ db.exec(`
 const bookingCols = new Set((db.prepare('PRAGMA table_info(bookings)').all() as { name: string }[]).map((c) => c.name))
 // Connections bought as one ticket (a layover, a train change): the booking is the whole journey, each leg in here.
 if (!bookingCols.has('legs')) db.exec(`ALTER TABLE bookings ADD COLUMN legs TEXT NOT NULL DEFAULT '[]'`)
+if (!bookingCols.has('city')) db.exec('ALTER TABLE bookings ADD COLUMN city TEXT')
 
 const FIELDS = [
   'origin',
@@ -63,6 +65,7 @@ const FIELDS = [
   'seat',
   'hotelName',
   'address',
+  'city',
   'checkInDate',
   'checkInTime',
   'checkOutDate',
@@ -147,7 +150,7 @@ export function cleanBooking(body: any, current?: Booking): BookingInput {
     if (!out.departDate) throw new HttpError(400, 'Completá la fecha')
     if (out.arriveDate && out.arriveDate < out.departDate) throw new HttpError(400, 'La llegada es antes de la salida')
     if (out.arriveDate === out.departDate) out.arriveDate = null
-    for (const f of ['hotelName', 'address', 'checkInDate', 'checkInTime', 'checkOutDate', 'checkOutTime'] as const) out[f] = null
+    for (const f of ['hotelName', 'address', 'city', 'checkInDate', 'checkInTime', 'checkOutDate', 'checkOutTime'] as const) out[f] = null
     const legs = cleanLegs(body && 'legs' in body ? body.legs : current?.legs)
     out.legs = legs.length && legsMatch(out, legs) ? legs : []
   } else {
@@ -200,4 +203,21 @@ export function updateBooking(id: string, b: BookingInput): Booking | null {
 
 export function deleteBooking(id: string): void {
   db.prepare('DELETE FROM bookings WHERE id = ?').run(id)
+}
+
+/**
+ * A hotel says where you sleep: its nights that don't have a place yet take the hotel's city (using the
+ * trip's own spelling when it's already there). Nights that already have a city stay as they are.
+ */
+export function claimHotelNights(b: Booking): void {
+  if (b.kind !== 'hotel' || !b.city || !b.checkInDate || !b.checkOutDate) return
+  const trip = getTrip(b.tripId)
+  if (!trip?.startDate || !trip.endDate) return
+  const stops = listStops(trip.id)
+  const nights = daysBetweenDates(b.checkInDate, shiftDate(b.checkOutDate, -1)).filter(
+    (d) => d >= trip.startDate! && d <= trip.endDate! && !stopOfDay(trip, stops, d),
+  )
+  if (!nights.length) return
+  const known = stops.find((s) => s.city.trim().toLowerCase() === b.city!.trim().toLowerCase())
+  setDaysCity(trip.id, nights, known?.city ?? b.city)
 }

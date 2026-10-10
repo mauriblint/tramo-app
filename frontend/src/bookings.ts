@@ -31,6 +31,7 @@ export function emptyBooking(kind: BookingKind, prefill: Partial<BookingInput> =
     seat: null,
     hotelName: null,
     address: null,
+    city: null,
     checkInDate: null,
     checkInTime: null,
     checkOutDate: null,
