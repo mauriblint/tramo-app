@@ -280,14 +280,23 @@ async function generate() {
   startPolling()
 }
 
+/** On desktop the map takes the whole white panel, edge to edge. */
+const mapFull = computed(() => isDesktop.value && level.value === 'trip' && tab.value === 'mapa')
+
 // ---- the trip map: places get geocoded on the server; refresh pins until they're all placed
 const locating = ref(false)
 let locateTimer: ReturnType<typeof setTimeout> | undefined
+// The geocoder can pause (rate limit): after a few rounds without progress, stop saying "Ubicando…".
+let lastPending = -1
+let stuck = 0
 async function locateAll() {
   clearTimeout(locateTimer)
   const res = await api.locateTrip(props.id).catch(() => null)
-  locating.value = !!res?.pending
-  if (!res?.pending) return
+  const pending = res?.pending ?? 0
+  stuck = pending && pending === lastPending ? stuck + 1 : 0
+  lastPending = pending
+  locating.value = !!pending && stuck < 4
+  if (!pending || stuck >= 8) return
   locateTimer = setTimeout(async () => {
     const data = await api.getTrip(props.id).catch(() => null)
     if (data) pins.value = data.pins
@@ -643,8 +652,13 @@ const editorTitle = computed(() =>
     <div v-else-if="trip" class="min-h-dvh bg-rocio pb-40 md:flex md:h-dvh md:min-h-0 md:gap-4 md:p-4">
       <TripSidebar class="hidden md:flex" :trip="trip" :active="navTab" :ideas="ideas.length" :shared="othersCount" :readonly="readonly" @copilot="dock?.open()" @rename="renameTrip" @delete="deleteTrip" />
 
-      <div ref="panel" class="md:min-w-0 md:flex-1 md:overflow-y-auto md:rounded-[28px] md:bg-white">
-      <div class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">
+      <div ref="panel" class="md:min-w-0 md:flex-1 md:rounded-[28px] md:bg-white" :class="mapFull ? 'md:overflow-hidden' : 'md:overflow-y-auto'">
+      <!-- Desktop map: title and filters as in every section, the map as wide and tall as the panel allows -->
+      <div v-if="mapFull" class="flex h-full flex-col gap-4 px-8 pt-7 pb-7">
+        <h1 class="font-display text-[30px] leading-tight font-bold">Mapa</h1>
+        <TripMap fill class="min-h-0 flex-1" :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :locating="locating" />
+      </div>
+      <div v-else class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">
         <template v-if="level === 'trip'">
           <!-- Desktop section header -->
           <div class="mb-5 hidden items-center justify-between gap-4 md:flex">

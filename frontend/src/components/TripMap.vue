@@ -14,7 +14,15 @@ import { nightsOf } from '@/tripProfile'
  * The trip on one map: its cities (numbered, joined by the route), each day's places in that day's color,
  * hotels and saved ideas. Tap anything for a card. Layers and a day filter decide what shows.
  */
-const props = defineProps<{ trip: Trip; stops: Stop[]; pins: Pin[]; bookings: Booking[]; locating: boolean }>()
+const props = defineProps<{
+  trip: Trip
+  stops: Stop[]
+  pins: Pin[]
+  bookings: Booking[]
+  locating: boolean
+  /** Fill the parent's height (desktop panel): filters on top, the map takes the rest. */
+  fill?: boolean
+}>()
 
 const DAY_COLORS = ['#3B82C4', '#8B5CF6', '#C2417A', '#E07A2E', '#14996B', '#B7791F', '#0E7490', '#6D5D4B']
 const days = computed(() => daysBetween(props.trip.startDate, props.trip.endDate))
@@ -182,8 +190,9 @@ const LEGEND_DAY = computed(() => (day.value ? colorOf(day.value) : null))
 </script>
 
 <template>
-  <div class="flex flex-col gap-3">
+  <div class="flex flex-col gap-3" :class="fill ? 'h-full' : ''">
     <!-- Layers and days -->
+    <div class="flex flex-col gap-3">
     <div class="flex flex-wrap items-center gap-2">
       <button
         v-for="l in LAYERS"
@@ -196,7 +205,7 @@ const LEGEND_DAY = computed(() => (day.value ? colorOf(day.value) : null))
       >
         {{ l.label }}
       </button>
-      <span v-if="locating" class="ml-1 inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-500">
+      <span v-if="locating" class="ml-1 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[12px] font-bold text-slate-500">
         <span class="h-2 w-2 animate-pulse rounded-full bg-brand" />Ubicando lugares…
       </span>
     </div>
@@ -226,7 +235,9 @@ const LEGEND_DAY = computed(() => (day.value ? colorOf(day.value) : null))
       </button>
     </div>
 
-    <div class="relative h-[62dvh] min-h-[420px] overflow-hidden rounded-[24px] bg-[#e9ece9] md:h-[calc(100dvh-230px)]">
+    </div>
+
+    <div class="relative overflow-hidden rounded-[24px] bg-[#e9ece9]" :class="fill ? 'min-h-0 flex-1' : 'h-[62dvh] min-h-[420px]'">
       <div ref="el" class="h-full w-full" />
       <button
         type="button"
@@ -250,7 +261,8 @@ const LEGEND_DAY = computed(() => (day.value ? colorOf(day.value) : null))
       <!-- The tapped point: bottom on the phone, right on desktop -->
       <article
         v-if="selected"
-        class="absolute inset-x-3 bottom-3 z-[600] flex flex-col gap-2.5 rounded-[22px] bg-white p-4 shadow-[0_18px_40px_rgba(14,31,24,0.2)] md:inset-x-auto md:top-3 md:right-3 md:bottom-auto md:w-[330px]"
+        class="absolute inset-x-3 bottom-3 z-[600] flex flex-col gap-2.5 rounded-[22px] bg-white p-4 shadow-[0_18px_40px_rgba(14,31,24,0.2)] md:inset-x-auto md:right-3 md:bottom-auto md:w-[330px]"
+        :class="'md:top-3'"
       >
         <div class="flex items-center gap-2">
           <template v-if="selected.kind === 'place'">
