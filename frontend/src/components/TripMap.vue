@@ -194,13 +194,15 @@ const LEGEND_DAY = computed(() => (day.value ? colorOf(day.value) : null))
     <!-- Layers and days -->
     <div class="flex flex-col gap-3">
     <div class="flex flex-wrap items-center gap-2">
+      <!-- Desktop puts the section title on the same line as the layers -->
+      <slot name="title" />
       <button
         v-for="l in LAYERS"
         :key="l.key"
         type="button"
         :aria-pressed="layers[l.key]"
-        class="h-9 rounded-full border-[1.5px] px-3.5 text-[13px]"
-        :class="layers[l.key] ? 'border-brand bg-brand font-extrabold text-white' : 'border-[#DCE3DF] bg-white font-bold text-slate-600'"
+        class="rounded-full border-[1.5px]"
+        :class="[fill ? 'h-11 px-5 text-[15px]' : 'h-9 px-3.5 text-[13px]', layers[l.key] ? 'border-brand bg-brand font-extrabold text-white' : 'border-[#DCE3DF] bg-white font-bold text-slate-600']"
         @click="layers[l.key] = !layers[l.key]"
       >
         {{ l.label }}
@@ -231,7 +233,7 @@ const LEGEND_DAY = computed(() => (day.value ? colorOf(day.value) : null))
         @click="pickDay(d)"
       >
         <span class="h-2 w-2 rounded-full" :style="{ background: colorOf(d) }" />
-        {{ dayName(trip, d, { weekday: 'short', day: 'numeric' }) }}
+        <span class="capitalize">{{ dayName(trip, d, { weekday: 'short', day: 'numeric' }) }}</span>
       </button>
     </div>
 

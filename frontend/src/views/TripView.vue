@@ -654,9 +654,10 @@ const editorTitle = computed(() =>
 
       <div ref="panel" class="md:min-w-0 md:flex-1 md:rounded-[28px] md:bg-white" :class="mapFull ? 'md:overflow-hidden' : 'md:overflow-y-auto'">
       <!-- Desktop map: title and filters as in every section, the map as wide and tall as the panel allows -->
-      <div v-if="mapFull" class="flex h-full flex-col gap-4 px-8 pt-7 pb-7">
-        <h1 class="font-display text-[30px] leading-tight font-bold">Mapa</h1>
-        <TripMap fill class="min-h-0 flex-1" :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :locating="locating" />
+      <div v-if="mapFull" class="flex h-full flex-col px-8 pt-7 pb-7">
+        <TripMap fill class="min-h-0 flex-1" :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :locating="locating">
+          <template #title><h1 class="mr-auto font-display text-[30px] leading-tight font-bold">Mapa</h1></template>
+        </TripMap>
       </div>
       <div v-else class="mx-auto w-full max-w-[720px] md:max-w-[800px] md:px-8 md:pt-7 md:pb-36 xl:pb-7">
         <template v-if="level === 'trip'">
