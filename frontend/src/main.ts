@@ -7,6 +7,7 @@ import App from './App.vue'
 import { api } from './api'
 import { auth, fetchMe, openAuth } from './auth'
 import { listenForInstallPrompt } from './install'
+import { enablePullToRefresh, watchForUpdates } from './pwa'
 import InboxView from './views/InboxView.vue'
 import LandingView from './views/LandingView.vue'
 import PlanView from './views/PlanView.vue'
@@ -47,4 +48,6 @@ router.beforeEach(async (to) => {
 })
 
 listenForInstallPrompt()
+watchForUpdates()
 createApp(App).use(router).mount('#app')
+enablePullToRefresh()
