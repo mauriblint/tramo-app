@@ -1,10 +1,11 @@
 <script setup lang="ts">
-export type TripTab = 'itinerario' | 'viajes' | 'hoteles' | 'ideas' | 'compartir'
+export type TripTab = 'itinerario' | 'mapa' | 'viajes' | 'hoteles' | 'ideas' | 'compartir'
 
 defineProps<{ tripId: string; active: TripTab; ideas: number }>()
 
 const TABS: { key: TripTab; label: string }[] = [
   { key: 'itinerario', label: 'Itinerario' },
+  { key: 'mapa', label: 'Mapa' },
   { key: 'viajes', label: 'Viajes' },
   { key: 'hoteles', label: 'Hoteles' },
   { key: 'ideas', label: 'Ideas' },

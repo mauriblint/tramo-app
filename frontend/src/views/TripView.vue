@@ -21,6 +21,7 @@ import DayView from '@/components/DayView.vue'
 import ItineraryList from '@/components/ItineraryList.vue'
 import PinDetail from '@/components/PinDetail.vue'
 import TripSidebar from '@/components/TripSidebar.vue'
+import TripMap from '@/components/TripMap.vue'
 import TripTabs, { type TripTab } from '@/components/TripTabs.vue'
 import { auth } from '@/auth'
 import { canOfferInstall, dismissInstall, install } from '@/install'
@@ -58,12 +59,13 @@ const level = computed<'trip' | 'day' | 'pin'>(() =>
 )
 const tab = computed<TripTab>(() => {
   const t = route.query.tab
-  return t === 'viajes' || t === 'hoteles' || t === 'ideas' || t === 'compartir' ? t : 'itinerario'
+  return t === 'mapa' || t === 'viajes' || t === 'hoteles' || t === 'ideas' || t === 'compartir' ? t : 'itinerario'
 })
 /** The sidebar keeps the section you came from highlighted while you're inside a day or an activity. */
 const navTab = computed<TripTab>(() => (level.value === 'trip' ? tab.value : currentPin.value && !currentPin.value.day ? 'ideas' : 'itinerario'))
 const SECTION: Record<TripTab, { title: string; action: string }> = {
   itinerario: { title: 'Itinerario', action: 'Agregar actividad' },
+  mapa: { title: 'Mapa', action: '' },
   viajes: { title: 'Viajes', action: 'Agregar viaje' },
   hoteles: { title: 'Hoteles', action: 'Agregar hotel' },
   ideas: { title: 'Ideas', action: 'Agregar idea' },
@@ -277,6 +279,28 @@ async function generate() {
   generation.value = res
   startPolling()
 }
+
+// ---- the trip map: places get geocoded on the server; refresh pins until they're all placed
+const locating = ref(false)
+let locateTimer: ReturnType<typeof setTimeout> | undefined
+async function locateAll() {
+  clearTimeout(locateTimer)
+  const res = await api.locateTrip(props.id).catch(() => null)
+  locating.value = !!res?.pending
+  if (!res?.pending) return
+  locateTimer = setTimeout(async () => {
+    const data = await api.getTrip(props.id).catch(() => null)
+    if (data) pins.value = data.pins
+    if (tab.value === 'mapa') locateAll()
+    else locating.value = false
+  }, 4000)
+}
+watch(
+  () => level.value === 'trip' && tab.value === 'mapa' && !!trip.value,
+  (onMap) => onMap && locateAll(),
+  { immediate: true },
+)
+onBeforeUnmount(() => clearTimeout(locateTimer))
 
 /** Where you were (or sleep) these days, without building anything. */
 async function setCity(days: string[], city: string) {
@@ -635,7 +659,7 @@ const editorTitle = computed(() =>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M19 8v6M16 11h6" /></svg>
               Invitar
             </button>
-            <div v-else-if="tab !== 'compartir'" class="flex flex-none items-center gap-2">
+            <div v-else-if="tab !== 'compartir' && tab !== 'mapa'" class="flex flex-none items-center gap-2">
             <button
               v-if="tab === 'viajes' || tab === 'hoteles'"
               class="inline-flex h-11 items-center gap-1.5 rounded-full border-[1.5px] border-[#DCE3DF] px-4 text-sm font-bold hover:border-brand hover:text-brand-dark"
@@ -662,7 +686,7 @@ const editorTitle = computed(() =>
             </div>
           </div>
 
-          <div v-if="tab === 'itinerario' || !isDesktop" class="relative h-[300px] md:h-[260px] md:overflow-hidden md:rounded-[24px]">
+          <div v-if="tab === 'itinerario' || (!isDesktop && tab !== 'mapa')" class="relative h-[300px] md:h-[260px] md:overflow-hidden md:rounded-[24px]">
             <TripCover :stops="stops" :destination="trip.destination" :country-codes="trip.countryCodes" />
             <div class="absolute inset-x-0 top-0 z-[500] flex items-center justify-between p-3 md:hidden">
               <RouterLink to="/plan" aria-label="Mis viajes" class="grid h-11 w-11 place-items-center rounded-full bg-white/95 shadow-md hover:bg-white">
@@ -729,6 +753,8 @@ const editorTitle = computed(() =>
               </div>
               <ItineraryList :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :generation="generation" :highlight-ids="highlightIds" :weather="weather" />
             </template>
+
+            <TripMap v-else-if="tab === 'mapa'" :trip="trip" :stops="stops" :pins="pins" :bookings="bookings" :locating="locating" />
 
             <template v-else-if="tab === 'compartir'">
               <button v-if="isOwner && othersCount" class="btn-primary h-12 text-[15px] md:hidden" @click="inviting = true">Invitar a alguien más</button>
@@ -802,7 +828,7 @@ const editorTitle = computed(() =>
       <!-- The copilot, always present: right column on wide screens, bottom bar + sheet elsewhere. It knows the day/activity you're on. -->
       <!-- Not in Compartir: nothing to ask it there, and the section sells sharing on its own. -->
       <CopilotDock
-        v-if="!readonly && !(level === 'trip' && tab === 'compartir')"
+        v-if="!readonly && !(level === 'trip' && (tab === 'compartir' || tab === 'mapa'))"
         ref="dock"
         :messages="messages"
         :sending="sending"

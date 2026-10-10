@@ -8,7 +8,7 @@ import * as bookings from './bookings.js'
 import { parseBookings } from './ai/bookings.js'
 import { dismissInbound, importInbound, listInbox } from './inbound.js'
 import { inviteMember, listMembers, removeMember, setMemberRole } from './members.js'
-import { geocode, locatePin } from './geo.js'
+import { geocode, locatePin, locateTripInBackground } from './geo.js'
 import { getWeather } from './weather.js'
 
 export const router = Router()
@@ -23,7 +23,7 @@ router.use('/trips/:tripId', (req, _res, next) => {
   if (repo.tripRole(trip, req.user.id) !== 'viewer') return next()
   if (req.method === 'DELETE' && req.path === `/members/${req.user.id}`) return next()
   // Placing a pin on the map only stores its coordinates: viewing a day does it.
-  if (req.method === 'POST' && /^\/pins\/[^/]+\/locate$/.test(req.path)) return next()
+  if (req.method === 'POST' && (/^\/pins\/[^/]+\/locate$/.test(req.path) || req.path === '/locate')) return next()
   next(new HttpError(403, 'Tenés permiso de solo ver en este viaje'))
 })
 
@@ -238,6 +238,11 @@ router.put('/trips/:tripId/days/:day/order', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []
   repo.reorderDay(trip.id, day, ids)
   res.json(repo.listPins(trip.id))
+})
+
+/** The trip map: place every pin in the background; answers how many are still pending. */
+router.post('/trips/:tripId/locate', (req, res) => {
+  res.json({ pending: locateTripInBackground(tripOr404(req).id) })
 })
 
 /** Lazily geocode a pin (called by the card when it becomes visible). */

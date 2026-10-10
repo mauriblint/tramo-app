@@ -1,4 +1,4 @@
-import { getGeocache, setGeocache, setPinGeo, type Pin, type Trip } from './db.js'
+import { getGeocache, getTrip, listPins, setGeocache, setPinGeo, type Pin, type Trip } from './db.js'
 
 // Nominatim usage policy: max 1 req/s and an identifying User-Agent.
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search'
@@ -73,4 +73,36 @@ export async function locatePin(pin: Pin, trip: Trip): Promise<Pin> {
     if (hit) return setPinGeo(pin.id, hit.lat, hit.lng, 'approx')!
   }
   return setPinGeo(pin.id, null, null, 'none')!
+}
+
+// ---- the whole trip, in the background (for the trip map)
+
+const locating = new Set<string>()
+
+/** Pins still waiting to be placed on the map. */
+export const unlocatedCount = (tripId: string) => listPins(tripId).filter((p) => p.geoStatus === null).length
+
+/**
+ * Place every pin of the trip that isn't placed yet, one at a time (the geocoder allows ~1 request/s and
+ * caches). Runs once per trip at a time; the map polls and shows them as they come.
+ */
+export function locateTripInBackground(tripId: string): number {
+  const pending = unlocatedCount(tripId)
+  if (!pending || locating.has(tripId)) return pending
+  locating.add(tripId)
+  void (async () => {
+    try {
+      for (;;) {
+        const trip = getTrip(tripId)
+        const next = trip && listPins(tripId).find((p) => p.geoStatus === null)
+        if (!trip || !next) break
+        await locatePin(next, trip)
+      }
+    } catch (e) {
+      console.error('[geo] trip', tripId, e)
+    } finally {
+      locating.delete(tripId)
+    }
+  })()
+  return pending
 }

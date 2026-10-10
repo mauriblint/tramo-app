@@ -32,6 +32,7 @@ const menu = ref(false)
 
 const ITEMS: { key: TripTab; label: string; icon: string }[] = [
   { key: 'itinerario', label: 'Itinerario', icon: '<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>' },
+  { key: 'mapa', label: 'Mapa', icon: '<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/>' },
   {
     key: 'viajes',
     label: 'Viajes',
@@ -121,7 +122,7 @@ const ITEMS: { key: TripTab; label: string; icon: string }[] = [
 
     <!-- On wide screens the copilot has its own column. -->
     <button
-      v-if="!readonly && active !== 'compartir'"
+      v-if="!readonly && active !== 'compartir' && active !== 'mapa'"
       class="flex h-14 items-center gap-3 rounded-full bg-noche pr-2 pl-5 xl:hidden text-left shadow-[0_12px_28px_rgba(14,31,24,0.3)] hover:bg-black"
       @click="$emit('copilot')"
     >

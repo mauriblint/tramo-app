@@ -16,6 +16,7 @@ import {
 } from '../db.js'
 import { HttpError, REASONING, daysBetween, openai } from './client.js'
 import { today } from '../today.js'
+import { locateTripInBackground } from '../geo.js'
 
 /**
  * Itinerary generation: one streamed LLM call per stop, all in parallel. Each day is saved
@@ -339,6 +340,8 @@ export function startDayGeneration(tripId: string, days: string[], city?: string
 }
 
 function finish(tripId: string, job: Job, full: boolean) {
+  // New places: get them on the map while the user reads them.
+  locateTripInBackground(tripId)
   const n = job.doneDays.size
   const failed = job.failedCities.length ? `\n\n⚠️ No pude generar: ${job.failedCities.join(', ')}. Pedime "rehacé ${job.failedCities[0]}" para reintentar.` : ''
   // Partial regenerations come from the chat, which already answered; only speak up on failure.

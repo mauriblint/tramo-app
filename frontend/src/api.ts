@@ -247,6 +247,8 @@ export const api = {
 
   createPin: (tripId: string, p: Partial<PinDraft>) => req<Pin>('POST', `/trips/${tripId}/pins`, p),
   updatePin: (tripId: string, id: string, p: Partial<PinDraft>) => req<Pin>('PATCH', `/trips/${tripId}/pins/${id}`, p),
+  /** Start placing every pin of the trip on the map; how many are still pending. */
+  locateTrip: (tripId: string) => req<{ pending: number }>('POST', `/trips/${tripId}/locate`),
   locatePin: (tripId: string, id: string) => req<Pin>('POST', `/trips/${tripId}/pins/${id}/locate`),
   weather: (lat: number, lng: number, start: string | null, end: string | null) =>
     req<Weather>('GET', `/weather?${new URLSearchParams({ lat: String(lat), lng: String(lng), start: start ?? '', end: end ?? '' })}`),
