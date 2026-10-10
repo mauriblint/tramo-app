@@ -265,6 +265,16 @@ async function poll() {
 }
 onBeforeUnmount(() => clearTimeout(pollTimer))
 
+// Back to the app after a while (the installed app lives in memory for days): other people's changes, forwarded
+// bookings and today's day come in fresh.
+let hiddenAt = 0
+function onVisibility() {
+  if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+  else if (hiddenAt && Date.now() - hiddenAt > 60_000 && !generation.value?.running) load()
+}
+onMounted(() => document.addEventListener('visibilitychange', onVisibility))
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibility))
+
 let refreshing = false
 async function refreshLive() {
   if (refreshing) return
