@@ -78,6 +78,9 @@ export async function locatePin(pin: Pin, trip: Trip): Promise<Pin> {
 // ---- the whole trip, in the background (for the trip map)
 
 const locating = new Set<string>()
+/** After the geocoder pushes back (429, timeouts), leave it alone for a while instead of hammering it. */
+let backoffUntil = 0
+const BACKOFF_MS = 2 * 60_000
 
 /** Pins still waiting to be placed on the map. */
 export const unlocatedCount = (tripId: string) => listPins(tripId).filter((p) => p.geoStatus === null).length
@@ -88,7 +91,7 @@ export const unlocatedCount = (tripId: string) => listPins(tripId).filter((p) =>
  */
 export function locateTripInBackground(tripId: string): number {
   const pending = unlocatedCount(tripId)
-  if (!pending || locating.has(tripId)) return pending
+  if (!pending || locating.has(tripId) || Date.now() < backoffUntil) return pending
   locating.add(tripId)
   void (async () => {
     try {
@@ -99,7 +102,8 @@ export function locateTripInBackground(tripId: string): number {
         await locatePin(next, trip)
       }
     } catch (e) {
-      console.error('[geo] trip', tripId, e)
+      backoffUntil = Date.now() + BACKOFF_MS
+      console.error('[geo] trip', tripId, (e as Error).message, '— pausing geocoding for 2 min')
     } finally {
       locating.delete(tripId)
     }
