@@ -1,13 +1,14 @@
 import './assets/main.css'
 
 import { createApp } from 'vue'
-import { createRouter, createWebHistory } from 'vue-router'
+import { START_LOCATION, createRouter, createWebHistory } from 'vue-router'
 
 import App from './App.vue'
 import { api } from './api'
 import { auth, fetchMe, openAuth } from './auth'
-import { listenForInstallPrompt } from './install'
+import { isStandalone, listenForInstallPrompt } from './install'
 import { enablePullToRefresh, watchForUpdates } from './pwa'
+import { lastPath, rememberPath } from './resume'
 import InboxView from './views/InboxView.vue'
 import LandingView from './views/LandingView.vue'
 import PlanView from './views/PlanView.vue'
@@ -31,7 +32,7 @@ const router = createRouter({
 /** Forwarded emails waiting for a trip are looked at once per visit, when the app opens. */
 let inboxChecked = false
 
-router.beforeEach(async (to) => {
+router.beforeEach(async (to, from) => {
   if (!auth.checked) await fetchMe()
   if (to.meta.auth && !auth.user) {
     openAuth('login')
@@ -44,7 +45,18 @@ router.beforeEach(async (to) => {
       if (waiting.length) return '/bookings'
     }
   }
+  // Opening the app (or a reload after a deploy) at its start page, already signed in: the installed app goes
+  // back to the trip screen you were on; the web goes to your trips instead of the landing.
+  if (from === START_LOCATION && auth.user && (to.path === '/' || (to.path === '/plan' && isStandalone()))) {
+    const resume = isStandalone() ? lastPath() : null
+    if (resume && resume !== to.fullPath) return resume
+    if (to.path === '/') return '/plan'
+  }
   document.title = (to.meta.title as string | undefined) ?? 'tramo'
+})
+
+router.afterEach((to) => {
+  if (to.path.startsWith('/trips/') || to.path === '/plan' || to.path === '/bookings') rememberPath(to.fullPath)
 })
 
 listenForInstallPrompt()

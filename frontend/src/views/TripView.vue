@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { api, type Member, type TripRole, type Booking, type BookingInput, type BookingKind, type GenerationStatus, type TimeOfDay, type Question, type Message, type Pin, type PinDraft, type PinStatus, type Stop, type Trip } from '@/api'
@@ -28,8 +28,9 @@ import { canOfferInstall, dismissInstall, install } from '@/install'
 import TripCover from '@/components/TripCover.vue'
 import TripHeader from '@/components/TripHeader.vue'
 import { PACE_LABEL, TRAVELERS_LABEL } from '@/tripProfile'
-import { daysBetween, emptyDraft, fmtDay, stopForDay } from '@/pinMeta'
+import { daysBetween, emptyDraft, fmtDay, localToday, stopForDay } from '@/pinMeta'
 import { useTripWeather } from '@/weather'
+import { lastDay, rememberDay } from '@/resume'
 import { TRANSPORT_KINDS, emptyBooking } from '@/bookings'
 import { profileSteps, routeReplies } from '@/tripProfile'
 
@@ -206,6 +207,44 @@ const headerSubtitle = computed(() => {
   if (planned.value) return [routeSummary.value, datesLabel.value].filter(Boolean).join(' · ')
   return 'Nuevo viaje'
 })
+
+// ---- land where you were: the day you last opened, or today while the trip is on
+watch(
+  () => [level.value, props.item, currentPin.value?.day] as const,
+  ([lvl, item, pinDay]) => {
+    if (lvl === 'day' && item) rememberDay(props.id, item)
+    else if (lvl === 'pin' && pinDay) rememberDay(props.id, pinDay)
+  },
+  { immediate: true },
+)
+/** On the itinerary, bring the day card into view: the one you were working on, else today's. */
+async function scrollToCurrentDay() {
+  const t = trip.value
+  if (!t || level.value !== 'trip' || tab.value !== 'itinerario') return
+  const today = localToday()
+  const onTrip = !!t.startDate && !!t.endDate && t.startDate <= today && today <= t.endDate
+  const target = lastDay(props.id) ?? (onTrip ? today : null)
+  if (!target) return
+  await nextTick()
+  // The list may still be rendering (data, weather, maps): look for the card for a moment.
+  const started = Date.now()
+  const tryScroll = () => {
+    if (level.value !== 'trip' || tab.value !== 'itinerario') return
+    const el = document.getElementById(`day-${target}`)
+    if (el) el.scrollIntoView({ block: 'center' })
+    else if (Date.now() - started < 2000) setTimeout(tryScroll, 50)
+  }
+  setTimeout(tryScroll, 0)
+}
+watch(
+  () => [level.value, tab.value, !!trip.value, days.value.length] as const,
+  ([lvl, t, loaded], prev) => {
+    const [plvl, pt, ploaded] = prev ?? []
+    // Arriving at the itinerary (first load, back from a day, or switching tab) — not on every data refresh.
+    if (lvl === 'trip' && t === 'itinerario' && loaded && (plvl !== lvl || pt !== t || !ploaded)) scrollToCurrentDay()
+  },
+  { flush: 'post', immediate: true },
+)
 
 onMounted(load)
 
