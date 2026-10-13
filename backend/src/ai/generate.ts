@@ -170,7 +170,9 @@ function stopPrompt(trip: Trip, stops: Stop[], i: number, days: string[], note?:
   const all = listPins(trip.id).filter((p) => p.status !== 'discarded')
   const pins = all.filter((p) => p.city?.toLowerCase().includes(city))
   const onDays = all.filter((p) => p.day && days.includes(p.day))
-  const keep = [...onDays, ...pins.filter((p) => p.day && !days.includes(p.day) && p.status !== 'idea')]
+  // Everything already on other days in this city — generated or added by hand — so nothing gets repeated.
+  // (Generated items have status "idea" too; filtering them out made the model repeat earlier days.)
+  const elsewhere = pins.filter((p) => p.day && !days.includes(p.day) && p.type !== 'route' && p.type !== 'summary')
   const wanted = pins.filter((p) => !p.day && (p.status === 'want' || p.status === 'must'))
   const ideas = pins.filter((p) => !p.day && p.status === 'idea')
 
@@ -189,7 +191,8 @@ Días a planificar (exactamente estos, en orden): ${days.join(', ')}
 ${isFirst && isOngoing(trip) ? '- El viaje ya está en curso: el primer día es HOY y ya están en esta ciudad (no hay llegada ni traslado).' : isFirst ? '- El primer día es la LLEGADA del viaje (ver vuelos en la ficha): algo liviano.' : arrives && fromPrev ? `- El primer día llegan desde ${fromPrev.city}: incluí el traslado (type "route") a la mañana y algo liviano.` : ''}
 ${isLast ? '- El último día es la SALIDA del viaje (ver vuelos en la ficha): planificá según la hora del vuelo, incluí el traslado al aeropuerto.' : leaves && toNext ? `- Al día siguiente del último se van a ${toNext.city} (eso lo planifica otra parada).` : ''}
 ${trip.datesTentative ? '- Las fechas son provisorias (todavía no hay pasajes): no asumas día de la semana, feriados ni eventos puntuales.' : ''}
-${keep.length ? `Ya está en el plan (no lo repitas; contalo dentro de los ítems del día y planificá alrededor):\n${keep.map((p) => `- ${p.day} ${p.timeOfDay ?? ''}: ${p.title}`).join('\n')}` : ''}
+${onDays.length ? `Ya está en estos días (no lo repitas; contalo dentro de los ítems del día y planificá alrededor):\n${onDays.map((p) => `- ${p.day} ${p.timeOfDay ?? ''}: ${p.title}`).join('\n')}` : ''}
+${elsewhere.length ? `Ya está en OTROS días del viaje en ${stop.city}: NO lo vuelvas a proponer, ni el mismo lugar con otro nombre:\n${elsewhere.map((p) => `- ${p.day}: ${p.title}`).join('\n')}` : ''}
 ${wanted.length ? `El usuario QUIERE hacer esto acá, incluilo:\n${wanted.map((p) => `- ${p.title}`).join('\n')}` : ''}
 ${ideas.length ? `Ideas guardadas por el usuario (usalas si encajan):\n${ideas.map((p) => `- ${p.title}`).join('\n')}` : ''}
 ${note?.trim() ? `Lo que el usuario pidió para estos días (respetalo por sobre todo lo demás): ${note.trim()}` : ''}
