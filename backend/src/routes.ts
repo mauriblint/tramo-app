@@ -237,6 +237,13 @@ router.patch('/trips/:tripId/pins/:pinId', (req, res) => {
 router.put('/trips/:tripId/days/:day/order', (req, res) => {
   const trip = tripOr404(req)
   const day = req.params.day === 'ideas' ? null : String(req.params.day)
+  // Manual reorder of a day: items in order, each with its moment of the day.
+  if (day && Array.isArray(req.body?.items)) {
+    const TIMES = ['morning', 'afternoon', 'evening']
+    const items = (req.body.items as any[]).map((it) => ({ id: String(it?.id), timeOfDay: TIMES.includes(it?.timeOfDay) ? it.timeOfDay : null }))
+    repo.reorderDayWithTimes(trip.id, day, items)
+    return void res.json(repo.listPins(trip.id))
+  }
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : []
   repo.reorderDay(trip.id, day, ids)
   res.json(repo.listPins(trip.id))

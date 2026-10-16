@@ -8,6 +8,8 @@ import { FIRST_QUESTION, nextQuestion, type QuestionOption } from '../onboarding
 import {
   PIN_STATUSES,
   PIN_TYPES,
+  PLAN_TYPES,
+  reorderDayWithTimes,
   PACES,
   TIMES_OF_DAY,
   TRAVELERS,
@@ -31,6 +33,7 @@ import {
   updatePin,
   updateTrip,
   type Message,
+  type TimeOfDay,
   type Pin,
   type PinDraft,
   type StopDraft,
@@ -54,9 +57,9 @@ const pinDraftSchema = {
   properties: {
     type: {
       type: 'string',
-      enum: [...PIN_TYPES],
+      enum: [...PLAN_TYPES],
       description:
-        'place = lugar a visitar; food = restaurante/comida/bar; activity = experiencia (onsen, clase, show); route = recorrido o traslado (ej. tren Tokio→Kioto); idea = tip, pendiente o plan sin un lugar concreto con nombre propio (ej. "comprar la Suica", "karaoke en cabina", "ir temprano"); summary = resumen. Si no podés nombrar un lugar puntual que exista en un mapa, usá idea.',
+        'place = lugar a visitar; food = restaurante/comida/bar; activity = experiencia o actividad (onsen, clase, show, caminata, trekking, circuito, paseo); idea = tip, pendiente o plan sin un lugar concreto con nombre propio (ej. "comprar la Suica", "karaoke en cabina", "ir temprano"); summary = resumen. Si no podés nombrar un lugar puntual que exista en un mapa, usá idea. Los traslados (trenes, buses, taxis, vuelos) NO son ítems: no los agregues.',
     },
     title: {
       type: 'string',
@@ -315,7 +318,7 @@ const tools: OpenAI.Responses.Tool[] = [
                 additionalProperties: false,
                 required: ['title', 'body', 'city', 'status', 'day', 'timeOfDay', 'type'],
                 properties: {
-                  type: nullable({ type: 'string', enum: [...PIN_TYPES] }),
+                  type: nullable({ type: 'string', enum: [...PLAN_TYPES] }),
                   title: { type: ['string', 'null'] },
                   body: { type: ['string', 'null'] },
                   city: { type: ['string', 'null'] },
@@ -325,6 +328,30 @@ const tools: OpenAI.Responses.Tool[] = [
                 },
               },
             },
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    name: 'reorder_day',
+    strict: true,
+    description:
+      'Cambia el orden de las actividades de UN día (y, si hace falta, su momento: mañana/tarde/noche). Pasá TODOS los ítems de ese día, en el orden nuevo. Usalo cuando el usuario pide reordenar, "primero X y después Y", "pasá X a la tarde".',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['day', 'items'],
+      properties: {
+        day: { type: 'string', description: 'YYYY-MM-DD' },
+        items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'timeOfDay'],
+            properties: { id: { type: 'string' }, timeOfDay: { type: ['string', 'null'], enum: [...TIMES_OF_DAY, null] } },
           },
         },
       },
@@ -502,7 +529,7 @@ ${ideas.length ? ideas.map(pinLine).join('\n') : '(ninguna)'}`
 const COMMON_RULES = `- Respondé en el idioma del usuario, cálido pero conciso. Markdown liviano. Nada de relleno.
 - El usuario VE el itinerario y la ficha en pantalla: no los repitas enteros; resumí lo que cambiaste en 1-3 líneas.
 - Usá web_search para datos actuales o verificables (horarios, cierres, reservas, eventos, precios, traslados).
-- Ítems con day deben caer dentro de las fechas del viaje. Agrupá por cercanía geográfica, días de llegada/salida livianos, traslados entre ciudades como ítem "route".
+- Ítems con day deben caer dentro de las fechas del viaje. Agrupá por cercanía geográfica, días de llegada/salida livianos. Los traslados (tren, bus, vuelo) no van como ítems: el día tiene solo actividades, lugares y comidas.
 - Tené en cuenta lo marcado quiero/imperdible: no lo borres ni lo muevas sin que el usuario lo pida.
 - No podés reservar ni comprar nada: nunca lo ofrezcas. Sí podés averiguar y avisar qué conviene reservar.`
 
@@ -519,6 +546,7 @@ function buildInstructions(trip: Trip, mode: Mode): string {
   const text = {
     planned: `Sos el copiloto del viaje. El itinerario día por día ya existe; ayudá a refinarlo conversando.
 - Si el usuario pide un cambio concreto, hacelo directamente con las tools (update_pins, add_pins, remove_pins) y confirmá breve.
+- Para cambiar el orden de un día ("primero X", "dejá la cena para el final", "reordená el día 3"), usá reorder_day con todos los ítems de ese día. Nunca digas que lo reordenaste sin llamarla.
 - Si cambia la ruta (noches, sumar/sacar ciudad): set_stops y después generate_itinerary solo para las ciudades afectadas.
 - "Rehacé los días de X" → generate_itinerary con cities [X].
 - Si está explorando o pide recomendaciones ("¿qué hay en Nara?", "ramen en Tokio", "planes si llueve"), usá suggest_pins: cada recomendación se muestra como una tarjeta propia con botón para guardarla. En el texto poné solo una intro breve (1-2 frases) y, si suma, un cierre; no repitas la lista que ya va en las tarjetas.
@@ -714,6 +742,17 @@ function runTool(name: string, args: any, ctx: ToolCtx): unknown {
         return { id, ok: true }
       })
       return { results }
+    }
+    case 'reorder_day': {
+      const day = String(args.day)
+      const onDay = new Set(listPins(tripId).filter((p) => p.day === day).map((p) => p.id))
+      const items = (args.items as { id: string; timeOfDay: TimeOfDay | null }[]).filter((it) => onDay.has(it.id))
+      // Anything the model left out keeps its place, after the ones it ordered.
+      const rest = listPins(tripId).filter((p) => p.day === day && !items.some((it) => it.id === p.id))
+      reorderDayWithTimes(tripId, day, [...items, ...rest.map((p) => ({ id: p.id, timeOfDay: p.timeOfDay }))])
+      for (const it of items) ctx.changed.add(it.id)
+      ctx.touchedDays.add(day)
+      return { ok: true, ordered: items.length }
     }
     case 'remove_pins': {
       for (const id of args.ids as string[]) {
@@ -944,7 +983,7 @@ const toDraft = (p: Pin): PinDraft => ({
 export function cleanDraft(d: Partial<PinDraft>): PinDraft {
   const day = isDate(d.day) ? d.day : null
   return {
-    type: PIN_TYPES.includes(d.type as never) ? d.type! : 'idea',
+    type: d.type === 'route' ? 'activity' : PIN_TYPES.includes(d.type as never) ? d.type! : 'idea',
     title: String(d.title ?? '').trim() || 'Sin título',
     body: String(d.body ?? '').trim(),
     city: d.city?.trim() || null,

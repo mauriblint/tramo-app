@@ -254,6 +254,9 @@ export const api = {
   locatePin: (tripId: string, id: string) => req<Pin>('POST', `/trips/${tripId}/pins/${id}/locate`),
   weather: (lat: number, lng: number, start: string | null, end: string | null) =>
     req<Weather>('GET', `/weather?${new URLSearchParams({ lat: String(lat), lng: String(lng), start: start ?? '', end: end ?? '' })}`),
+  /** A day's activities in order, each with its moment of the day. */
+  orderDay: (tripId: string, day: string, items: { id: string; timeOfDay: TimeOfDay | null }[]) =>
+    req<Pin[]>('PUT', `/trips/${tripId}/days/${day}/order`, { items }),
   reorderDay: (tripId: string, day: string | null, ids: string[]) =>
     req<Pin[]>('PUT', `/trips/${tripId}/days/${day ?? 'ideas'}/order`, { ids }),
   geo: (q: string, countries: string[] = []) =>

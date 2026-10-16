@@ -23,7 +23,14 @@ const props = defineProps<{
   /** "Solo ver": no building or adding. */
   readonly?: boolean
 }>()
-const emit = defineEmits<{ located: [Pin, Pin]; add: [string]; generate: [string, string | null]; ask: [string]; city: [string[], string | null] }>()
+const emit = defineEmits<{
+  located: [Pin, Pin]
+  add: [string]
+  generate: [string, string | null]
+  ask: [string]
+  city: [string[], string | null]
+  reorder: [string, { id: string; timeOfDay: TimeOfDay | null }[]]
+}>()
 
 /** A day that already passed: you record where you were, nothing gets built. */
 const isPast = computed(() => props.day < localToday())
@@ -59,10 +66,41 @@ const dayPins = computed(() => props.pins.filter((p) => p.day === props.day).sor
 const head = computed(() => dayHeadline(dayPins.value))
 const w = computed(() => props.weather[props.day])
 
-/** Transfers read as a line between cards; everything else is a numbered stop of the day. */
-const isLeg = (p: Pin) => p.type === 'route'
-const numbered = computed(() => dayPins.value.filter((p) => !isLeg(p)))
+/** A day is its activities, each a numbered card (old "transfer" items included), in the order they show. */
+const SLOT_RANK: Record<string, number> = { morning: 0, afternoon: 1, evening: 2 }
+const rankOf = (t: TimeOfDay | null) => (t ? SLOT_RANK[t]! : 3)
+const numbered = computed(() => [...dayPins.value].sort((a, b) => rankOf(a.timeOfDay) - rankOf(b.timeOfDay) || a.position - b.position))
 const numberOf = (p: Pin) => numbered.value.indexOf(p) + 1
+
+// ---- put the day in order by hand: move up/down (crossing into the next moment of the day) or change the moment
+const ordering = ref(false)
+const orderDraft = ref<{ pin: Pin; timeOfDay: TimeOfDay | null }[]>([])
+function startOrdering() {
+  orderDraft.value = numbered.value.map((pin) => ({ pin, timeOfDay: pin.timeOfDay }))
+  ordering.value = true
+}
+function move(i: number, dir: -1 | 1) {
+  const list = orderDraft.value
+  const j = i + dir
+  if (j < 0 || j >= list.length) return
+  const a = list[i]!
+  const b = list[j]!
+  // Moving past an item of another moment takes that moment ("subí la cena a la tarde").
+  if (a.timeOfDay !== b.timeOfDay) a.timeOfDay = b.timeOfDay
+  else [list[i], list[j]] = [b, a]
+}
+const SLOT_CYCLE: (TimeOfDay | null)[] = ['morning', 'afternoon', 'evening']
+function cycleSlot(i: number) {
+  const it = orderDraft.value[i]!
+  it.timeOfDay = SLOT_CYCLE[(SLOT_CYCLE.indexOf(it.timeOfDay) + 1) % SLOT_CYCLE.length]!
+  // Keep the list in the order it will show: by moment, then as arranged.
+  orderDraft.value = orderDraft.value.map((x, k) => ({ x, k })).sort((p, q) => rankOf(p.x.timeOfDay) - rankOf(q.x.timeOfDay) || p.k - q.k).map((p) => p.x)
+}
+function saveOrder() {
+  emit('reorder', props.day, orderDraft.value.map((it) => ({ id: it.pin.id, timeOfDay: it.timeOfDay })))
+  ordering.value = false
+}
+watch(() => props.day, () => (ordering.value = false))
 
 // Bookings sit in the slot of their time: leaving / checking out before that slot's activities, arriving / checking in after.
 const events = computed(() => dayEvents(props.bookings, props.day))
@@ -238,18 +276,42 @@ function firstSentence(s: string) {
         </p>
       </div>
 
-      <div v-for="g in groups" :key="g.key" class="mt-4 flex flex-col gap-2">
+      <!-- Ordering the day by hand -->
+      <div v-if="ordering" class="mt-4 flex flex-col gap-2">
+        <p class="px-1 text-[13px] text-slate-500">Mové con las flechas. Tocá el momento para cambiarlo.</p>
+        <div
+          v-for="(it, i) in orderDraft"
+          :key="it.pin.id"
+          class="flex items-center gap-2.5 rounded-[18px] bg-white py-2.5 pr-2 pl-3 md:bg-rocio"
+        >
+          <span class="grid h-7 w-7 flex-none place-items-center rounded-full bg-brand text-[12px] font-extrabold text-white">{{ i + 1 }}</span>
+          <span class="min-w-0 flex-1 truncate text-[15px] font-extrabold">{{ it.pin.title }}</span>
+          <button
+            type="button"
+            class="h-8 flex-none rounded-full bg-brand-soft px-3 text-[12px] font-extrabold text-brand-dark"
+            :aria-label="`Momento: ${it.timeOfDay ? TIME_META[it.timeOfDay].label : 'sin horario'}. Cambiar`"
+            @click="cycleSlot(i)"
+          >{{ it.timeOfDay ? TIME_META[it.timeOfDay].label : 'Sin horario' }}</button>
+          <button type="button" :aria-label="`Subir ${it.pin.title}`" class="grid h-9 w-9 flex-none place-items-center rounded-full border-[1.5px] border-[#DCE3DF] bg-white disabled:opacity-30" :disabled="i === 0 && it.timeOfDay === 'morning'" @click="move(i, -1)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
+          </button>
+          <button type="button" :aria-label="`Bajar ${it.pin.title}`" class="grid h-9 w-9 flex-none place-items-center rounded-full border-[1.5px] border-[#DCE3DF] bg-white disabled:opacity-30" :disabled="i === orderDraft.length - 1 && it.timeOfDay === 'evening'" @click="move(i, 1)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+        </div>
+        <div class="mt-1 flex gap-2">
+          <button type="button" class="h-12 flex-1 rounded-full text-[15px] font-bold text-slate-500 hover:bg-white md:hover:bg-rocio" @click="ordering = false">Cancelar</button>
+          <button type="button" class="btn-primary h-12 flex-1 text-[15px]" @click="saveOrder">Guardar orden</button>
+        </div>
+      </div>
+
+      <div v-for="g in ordering ? [] : groups" :key="g.key" class="mt-4 flex flex-col gap-2">
         <h2 class="px-1 text-xs font-extrabold tracking-[0.07em] text-slate-400 uppercase">{{ g.label }}</h2>
         <template v-for="e in g.before" :key="e.booking.id + e.type">
           <BookingBlock :event="e" :city="stop?.city ?? null" />
         </template>
         <template v-for="p in g.pins" :key="p.id">
-          <div v-if="isLeg(p)" class="flex items-center gap-3 pl-7 text-[13px] font-bold text-slate-500">
-            <span class="h-5 w-0.5 bg-[#CFE3D8]" />
-            {{ p.title }}
-          </div>
           <RouterLink
-            v-else
             :to="`/trips/${trip.id}/pins/${p.id}`"
             class="flex items-center gap-3.5 rounded-[20px] bg-white py-3.5 md:bg-rocio pr-3 pl-3.5 transition hover:shadow-[0_6px_18px_rgba(14,31,24,0.08)]"
             :class="p.status === 'done' ? 'opacity-60' : ''"
@@ -352,13 +414,22 @@ function firstSentence(s: string) {
         <span>Zona para dormir: <b class="text-brand-dark">{{ stop.lodging }}</b></span>
       </div>
 
-      <div v-if="!readonly" class="mt-4 flex gap-2">
+      <div v-if="!readonly && !ordering" class="mt-4 flex gap-2">
         <button
           class="flex h-12 flex-1 items-center justify-center gap-2 rounded-full border-[1.5px] border-dashed border-[#9FC9B4] text-[15px] font-bold text-brand-dark hover:bg-white md:hover:bg-rocio"
           @click="emit('add', day)"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           Agregar algo
+        </button>
+        <button
+          v-if="dayPins.length > 1"
+          class="flex h-12 flex-none items-center justify-center gap-2 rounded-full border-[1.5px] border-[#DCE3DF] px-4 text-[15px] font-bold text-noche hover:border-brand"
+          title="Cambiar el orden de las actividades"
+          @click="startOrdering"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4" /></svg>
+          Ordenar
         </button>
         <button
           v-if="dayPins.length && stop && !building && !isPast"

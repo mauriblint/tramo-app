@@ -1,6 +1,7 @@
 import { config } from '../config.js'
 import {
   PIN_TYPES,
+  PLAN_TYPES,
   TIMES_OF_DAY,
   createMessage,
   createPin,
@@ -89,7 +90,7 @@ const daySchema = {
               required: ['timeOfDay', 'type', 'title', 'note'],
               properties: {
                 timeOfDay: { type: 'string', enum: [...TIMES_OF_DAY] },
-                type: { type: 'string', enum: [...PIN_TYPES] },
+                type: { type: 'string', enum: [...PLAN_TYPES] },
                 title: { type: 'string' },
                 note: { type: 'string', description: '1-2 frases útiles: qué es, tip, horario o cómo llegar' },
               },
@@ -188,7 +189,7 @@ Esta parada: ${stop.city}${stop.lodging ? ` (alojamiento: ${stop.lodging})` : ''
 ${stop.dayTrips.length ? `Excursiones de día desde esta base (incluilas, un día cada una): ${stop.dayTrips.join(', ')}` : 'Sin excursiones de día asignadas: quedate en la ciudad.'}
 ${otherTrips.length ? `NO hagas excursiones a: ${otherTrips.join(', ')} (las cubre otra parada).` : ''}
 Días a planificar (exactamente estos, en orden): ${days.join(', ')}
-${isFirst && isOngoing(trip) ? '- El viaje ya está en curso: el primer día es HOY y ya están en esta ciudad (no hay llegada ni traslado).' : isFirst ? '- El primer día es la LLEGADA del viaje (ver vuelos en la ficha): algo liviano.' : arrives && fromPrev ? `- El primer día llegan desde ${fromPrev.city}: incluí el traslado (type "route") a la mañana y algo liviano.` : ''}
+${isFirst && isOngoing(trip) ? '- El viaje ya está en curso: el primer día es HOY y ya están en esta ciudad (no hay llegada ni traslado).' : isFirst ? '- El primer día es la LLEGADA del viaje (ver vuelos en la ficha): algo liviano.' : arrives && fromPrev ? `- El primer día llegan desde ${fromPrev.city}: dejá la mañana libre para el viaje y armá algo liviano (sin agregar el traslado como ítem).` : ''}
 ${isLast ? '- El último día es la SALIDA del viaje (ver vuelos en la ficha): planificá según la hora del vuelo, incluí el traslado al aeropuerto.' : leaves && toNext ? `- Al día siguiente del último se van a ${toNext.city} (eso lo planifica otra parada).` : ''}
 ${trip.datesTentative ? '- Las fechas son provisorias (todavía no hay pasajes): no asumas día de la semana, feriados ni eventos puntuales.' : ''}
 ${onDays.length ? `Ya está en estos días (no lo repitas; contalo dentro de los ítems del día y planificá alrededor):\n${onDays.map((p) => `- ${p.day} ${p.timeOfDay ?? ''}: ${p.title}`).join('\n')}` : ''}
@@ -200,6 +201,7 @@ ${note?.trim() ? `Lo que el usuario pidió para estos días (respetalo por sobre
 Reglas:
 - Ítems por día según el ritmo, contando lo que ya está en el plan: tranqui 2, intermedio 3, intenso 3-4. Con chicos: actividades aptas para su edad, pausas y nada de jornadas eternas; agrupá por cercanía geográfica; no repitas lugares entre días.
 - Cada ítem es un lugar/actividad/comida real y concreto con nombre propio (nunca "X o Y" ni "a elección").
+- Nada de traslados como ítems (trenes, buses, taxis, ir al aeropuerto): el día tiene solo actividades, lugares y comidas. Una caminata o trekking es una actividad (type activity).
 - Escribí en el idioma de la ficha. note: 1-2 frases útiles.`
 }
 

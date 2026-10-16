@@ -545,6 +545,12 @@ async function schedulePin(p: Pin, day: string, timeOfDay: TimeOfDay) {
   flash([p.id])
 }
 
+/** Manual order of a day's activities (from the day screen). */
+async function orderDay(day: string, items: { id: string; timeOfDay: TimeOfDay | null }[]) {
+  const res = await run(() => api.orderDay(props.id, day, items))
+  if (res) pins.value = res
+}
+
 async function movePin(p: Pin, day: string | null) {
   if (readonly.value) return
   const res = await run(() => api.updatePin(props.id, p.id, { day }))
@@ -877,6 +883,7 @@ const editorTitle = computed(() =>
           :generation="generation"
           :sending="sending"
           :readonly="readonly"
+          @reorder="orderDay"
           @located="(p, np) => Object.assign(p, np)"
           @add="openNew"
           @generate="buildDays"

@@ -44,7 +44,7 @@ function save() {
 
       <div class="mt-3 flex flex-wrap gap-1.5">
         <button
-          v-for="t in PIN_TYPES"
+          v-for="t in PIN_TYPES.filter((x) => x !== 'route' || d.type === 'route')"
           :key="t"
           type="button"
           class="chip border"

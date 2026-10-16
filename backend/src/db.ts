@@ -13,6 +13,8 @@ export const PIN_STATUSES = ['idea', 'want', 'must', 'done', 'discarded'] as con
 export const TIMES_OF_DAY = ['morning', 'afternoon', 'evening'] as const
 
 export type PinType = (typeof PIN_TYPES)[number]
+/** What the AI may create: a day has activities, places and food — never transfers ("route" stays only for old data). */
+export const PLAN_TYPES = PIN_TYPES.filter((t) => t !== 'route')
 export type PinStatus = (typeof PIN_STATUSES)[number]
 export type TimeOfDay = (typeof TIMES_OF_DAY)[number]
 
@@ -487,6 +489,13 @@ export function sortDay(tripId: string, day: string): void {
   pins.sort((a, b) => (TIME_RANK[a.timeOfDay ?? ''] ?? 1) - (TIME_RANK[b.timeOfDay ?? ''] ?? 1) || a.position - b.position)
   const upd = db.prepare('UPDATE pins SET position = ? WHERE id = ?')
   db.transaction(() => pins.forEach((p, i) => upd.run(i, p.id)))()
+}
+
+/** A day in the given order, each item with its moment (morning/afternoon/evening): manual or from the copilot. */
+export function reorderDayWithTimes(tripId: string, day: string, items: { id: string; timeOfDay: TimeOfDay | null }[]): void {
+  const upd = db.prepare('UPDATE pins SET day = ?, time_of_day = ?, position = ? WHERE id = ? AND trip_id = ?')
+  db.transaction(() => items.forEach((it, i) => upd.run(day, it.timeOfDay, i, it.id, tripId)))()
+  touchTrip(tripId)
 }
 
 /** Explicit reorder from drag & drop. */
